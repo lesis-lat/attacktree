@@ -39,6 +39,16 @@ Thumbs.db
 # Local Claude Code settings (shared settings in .claude/settings.json stay tracked)
 .claude/settings.local.json
 
-# Attack trees exported or saved while testing (client models stay out of the repo)
+# Threat models are client material: they never go in the repo. The only tree that
+# ships is the bundled example in src/model/examples.ts. This keeps out trees, YAML
+# sources and exported images saved at the top level or in a local folder.
 *.attacktree.yaml
+/*.yaml
+/*.yml
+/*.svg
+/*.png
+/*.dot
 scratch/
+trees/
+models/
+threat-models/
