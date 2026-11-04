@@ -1,14 +1,25 @@
 import monoLatin from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2?url';
 import sansLatin from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?url';
 import type { Layout } from '../layout/layout';
-import { METRICS } from '../layout/measure';
+import { FONT_FAMILY, METRICS, textWidth } from '../layout/measure';
 import { pngTrailer, svgSourceComment } from '../model/embed';
 import { isGhost, KIND_LABEL, type Tree } from '../model/types';
 
 const TITLE_SPACE = 52;
+const TITLE_FONT = `650 17px ${FONT_FAMILY}`;
+const TITLE_MARGIN = 24;
+
+// code points XML 1.0 does not allow: one of them makes the whole file unreadable
+// eslint-disable-next-line no-control-regex
+const NOT_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF\uD800-\uDFFF]/gu;
 
 function esc(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return text
+    .replace(NOT_XML, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function token(name: string): string {
@@ -49,7 +60,7 @@ function logoData(theme: 'light' | 'dark'): Promise<string> {
 }
 
 export interface SvgOptions {
-  /** inline the Inter font so the file looks the same anywhere (exports) */
+  /** inline the IBM Plex fonts so the file looks the same anywhere (exports) */
   embedFont?: boolean;
   showTitle?: boolean;
   /** keeps marker ids unique when several diagrams share one page */
@@ -59,6 +70,8 @@ export interface SvgOptions {
 }
 
 const CREDIT_SPACE = 46;
+/** the credit line and the logo, with margins: a narrower tree is widened so they are not cut off */
+const CREDIT_WIDTH = 290;
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
 
 export async function renderSvg(
@@ -71,7 +84,14 @@ export async function renderSvg(
   const { bounds } = layout;
   const withTitle = showTitle && !!tree.title;
   const offsetY = withTitle ? TITLE_SPACE : 0;
-  const width = Math.ceil(bounds.width);
+  const content = Math.ceil(bounds.width);
+  const width = Math.max(
+    content,
+    credit ? CREDIT_WIDTH : 0,
+    withTitle ? Math.ceil(textWidth(tree.title, TITLE_FONT)) + TITLE_MARGIN * 2 : 0,
+  );
+  // a widened image keeps the tree in the middle
+  const offsetX = (width - content) / 2;
   const height = Math.ceil(bounds.height + offsetY + (credit ? CREDIT_SPACE : 0));
   const font = embedFont ? await embeddedFont() : '';
   const c = {
@@ -110,7 +130,7 @@ export async function renderSvg(
       `<text x="${width / 2}" y="34" text-anchor="middle" font-size="17" font-weight="650" fill="${c.title}">${esc(tree.title)}</text>`,
     );
   }
-  out.push(`<g transform="translate(${-bounds.x} ${offsetY - bounds.y})">`);
+  out.push(`<g transform="translate(${offsetX - bounds.x} ${offsetY - bounds.y})">`);
 
   for (const edge of tree.edges) {
     const placed = layout.edges.get(edge.id);
@@ -191,7 +211,12 @@ export async function renderSvg(
   return { svg: source === null ? svg : `${svg}\n${svgSourceComment(source)}`, width, height };
 }
 
-export async function renderPng(svg: string, width: number, height: number, scale = 2): Promise<Blob> {
+/** a little under what browsers accept (Safari: 16.7 megapixels; everyone: 16384px a side), so big trees still export */
+const MAX_PIXELS = 16_000_000;
+const MAX_SIDE = 16_000;
+
+export async function renderPng(svg: string, width: number, height: number, requested = 2): Promise<Blob> {
+  const scale = Math.min(requested, Math.sqrt(MAX_PIXELS / (width * height)), MAX_SIDE / width, MAX_SIDE / height);
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const image = new Image();
@@ -234,8 +259,9 @@ export function fileBase(title: string): string {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
+    .replace(/^-+/, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
   return base || 'attack-tree';
 }
 

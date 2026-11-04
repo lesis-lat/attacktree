@@ -196,7 +196,8 @@ a.button {
 --------------------------------------------------------------------------- */
 .workspace {
   display: grid;
-  grid-template-columns: var(--editor-width) 1px minmax(0, 1fr);
+  /* the saved width may come from a wider window: never squeeze the canvas below 380px */
+  grid-template-columns: clamp(300px, var(--editor-width), calc(100vw - 380px)) 1px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -518,6 +519,8 @@ a.button {
 }
 .tree-node-label span {
   white-space: nowrap;
+  /* an empty line of the label still takes its line, as measure.ts counts it */
+  min-height: 18px;
 }
 .tree-node.kind-reality .tree-node-label {
   align-items: center;
@@ -604,7 +607,10 @@ a.button {
   padding: 3px 7px;
   border-radius: 7px;
   background: var(--edge-label-bg);
-  border: 1px solid var(--border);
+  /* drawn inside the box, so its size is exactly what measure.ts reserved */
+  border: 0;
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
   color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
@@ -616,12 +622,15 @@ a.button {
 }
 .edge-label.is-tag {
   background: var(--edge-tag-bg);
-  border-color: transparent;
+  outline-color: transparent;
   color: var(--edge-tag-text);
   border-radius: 999px;
 }
 .edge-label.is-selected {
   box-shadow: 0 0 0 2px var(--accent);
+}
+.edge-label span {
+  min-height: 14px;
 }
 .react-flow__edgelabel-renderer .edge-label {
   z-index: 1;

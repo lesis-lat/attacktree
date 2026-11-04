@@ -61,8 +61,13 @@ const LAYOUT_OPTIONS: Record<string, string> = {
 
 /** Only what changes geometry; typing in a comment must not trigger a new layout. */
 export function layoutKey(tree: Tree, visible: Set<string> | null): string {
-  const nodes = tree.nodes.filter((n) => !visible || visible.has(n.id)).map((n) => [n.id, n.kind, n.label]);
-  const edges = tree.edges.map((e) => [e.id, e.source, e.target, e.label ?? '', e.backwards]);
+  const shown = tree.nodes.filter((n) => !visible || visible.has(n.id));
+  const ids = new Set(shown.map((n) => n.id));
+  const nodes = shown.map((n) => [n.id, n.kind, n.label]);
+  // edges with a hidden end are not laid out
+  const edges = tree.edges
+    .filter((e) => ids.has(e.source) && ids.has(e.target))
+    .map((e) => [e.id, e.source, e.target, e.label ?? '', e.backwards]);
   return JSON.stringify([nodes, edges]);
 }
 

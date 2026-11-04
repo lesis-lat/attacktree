@@ -76,6 +76,8 @@ export interface Tree {
   nodes: TreeNode[];
   edges: TreeEdge[];
   filter: string[];
+  /** where each `filter` entry sits in the text (for editor highlighting) */
+  filterRefs?: Array<{ id: string; range: Range }>;
   /** where the user dragged nodes on the canvas; everything else is laid out automatically */
   positions: Record<string, Point>;
   diagnostics: Diagnostic[];

@@ -14,7 +14,7 @@
     <script>
       try {
         var p = localStorage.getItem('attacktree:theme');
-        var dark = p === 'dark' || ((!p || p === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+        var dark = p === 'dark' || (p !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); // same rule as src/ui/theme.ts
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       } catch (e) {}
     </script>

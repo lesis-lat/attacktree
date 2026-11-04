@@ -9,8 +9,10 @@ function value(text: string, key: string): ReactNode[] {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (quote) {
-      if (c === quote) quote = null;
-    } else if (c === "'" || c === '"') quote = c;
+      if (quote === '"' && c === '\\') i++;
+      else if (c === quote) quote = null;
+      // a quote opens a string only where a scalar starts, not inside a plain value ("Attacker's")
+    } else if ((c === "'" || c === '"') && /(^|[\s[{,])$/.test(text.slice(0, i))) quote = c;
     else if (c === '#' && (i === 0 || /\s/.test(text[i - 1]))) {
       cut = i;
       break;

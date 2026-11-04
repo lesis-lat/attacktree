@@ -87,6 +87,8 @@ function NodePanel({ node, tree, actions, labelRef, readOnly }: { node: TreeNode
             setLabel(e.target.value);
             if (e.target.value.trim()) actions.setLabel(node.id, e.target.value);
           }}
+          // an empty label is never saved; don't leave the field showing one
+          onBlur={() => !label.trim() && setLabel(node.label)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -130,7 +132,7 @@ function NodePanel({ node, tree, actions, labelRef, readOnly }: { node: TreeNode
         <span>
           <strong>{outgoing}</strong> out
         </span>
-        {node.id in tree.positions && (
+        {Object.hasOwn(tree.positions, node.id) && (
           <span className="pinned">
             <Pin size={12} /> Placed by hand
             {!readOnly && (

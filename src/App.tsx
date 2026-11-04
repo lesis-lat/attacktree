@@ -20,6 +20,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isMap, isScalar, parseDocument, stringify } from 'yaml';
 import { aiPrompt } from './ai/prompt';
 import { Inspector, type InspectorActions } from './canvas/Inspector';
 import { type Selection, TreeCanvas } from './canvas/TreeCanvas';
@@ -71,6 +72,22 @@ function nextKindAfter(kind: string): DeclaredKind {
   return kind === 'attack' ? 'mitigation' : 'attack';
 }
 
+/** The same source with " (copy)" after its title, still valid YAML whatever quoting or comment the title has. */
+function withCopyTitle(text: string): string {
+  const doc = parseDocument(text);
+  const node = isMap(doc.contents) ? doc.contents.get('title', true) : undefined;
+  if (!isScalar(node) || node.value == null || String(node.value).trim() === '' || !node.range) return text;
+  const title = `${String(node.value)} (copy)`;
+  const [from, to] = node.range;
+  const trailing = text.slice(from, to).match(/\s*$/)![0];
+  // plain when YAML allows it, else double-quoted (a JSON string is valid YAML)
+  for (const scalar of [stringify(title, { lineWidth: 0 }).trimEnd(), JSON.stringify(title)]) {
+    const next = text.slice(0, from) + scalar + trailing + text.slice(to);
+    if (parseTree(next).title === title) return next;
+  }
+  return text;
+}
+
 export function App() {
   const theme = useTheme();
   const { toasts, push: toast } = useToasts();
@@ -111,8 +128,8 @@ export function App() {
 
   const parsed = useMemo(() => parseTree(text), [text]);
   // While the YAML is broken mid-edit, the canvas keeps showing the last good version.
-  const lastGood = useRef<{ docId: string | undefined; tree: Tree }>({ docId: undefined, tree: parsed });
-  if (!parsed.syntaxError || lastGood.current.docId !== doc?.id) lastGood.current = { docId: doc?.id, tree: parsed };
+  const lastGood = useRef<{ docId: string | undefined; tree: Tree; text: string }>({ docId: undefined, tree: parsed, text });
+  if (!parsed.syntaxError || lastGood.current.docId !== doc?.id) lastGood.current = { docId: doc?.id, tree: parsed, text };
   const tree = parsed.syntaxError ? lastGood.current.tree : parsed;
   const readOnly = parsed.syntaxError;
 
@@ -142,18 +159,29 @@ export function App() {
 
   // --- documents ---------------------------------------------------------------
 
-  const persist = useCallback(async () => {
+  // Trees being deleted must not be written back by a late autosave.
+  const deleted = useRef(new Set<string>());
+  // The last save of the open tree failed: its text is not on disk even though `doc` holds it.
+  const unsaved = useRef(false);
+
+  /** Saves the open tree; false when the browser refused. */
+  const persist = useCallback(async (): Promise<boolean> => {
     const { doc: current, text: body, parsed: p } = refs.current;
-    if (!current || body === current.text) return;
+    if (!current || (body === current.text && !unsaved.current) || deleted.current.has(current.id)) return true;
     const updated: TreeDoc = { ...current, text: body, title: p.title || 'Untitled tree', updatedAt: Date.now() };
     refs.current.doc = updated;
     setDoc(updated);
     setDocs((all) => [updated, ...all.filter((d) => d.id !== updated.id)]);
     try {
       await saveDoc(updated);
-      setSaved(true);
+      unsaved.current = false;
+      // more typing may have arrived while the disk was busy
+      setSaved(refs.current.text === body);
+      return true;
     } catch {
+      unsaved.current = true;
       toast('Could not save in this browser', 'error');
+      return false;
     }
   }, [toast]);
 
@@ -177,6 +205,7 @@ export function App() {
   const open = useCallback(
     async (next: TreeDoc) => {
       await persist();
+      unsaved.current = false;
       refs.current.doc = next;
       setDoc(next);
       setText(next.text);
@@ -192,13 +221,20 @@ export function App() {
   const createAndOpen = useCallback(
     async (body: string, fallbackTitle: string) => {
       const d = createDoc(body, parseTree(body).title || fallbackTitle);
+      let stored = true;
       try {
         await saveDoc(d);
       } catch {
+        stored = false;
         toast('This browser is not keeping data; changes will be lost on reload', 'error');
       }
       setDocs((all) => [d, ...all]);
       await open(d);
+      if (!stored) {
+        // not on disk yet: the dot says so, and the next save writes it
+        unsaved.current = true;
+        setSaved(false);
+      }
       return d;
     },
     [open, toast],
@@ -246,6 +282,7 @@ export function App() {
 
   const removeCurrent = async () => {
     if (!doc) return;
+    deleted.current.add(doc.id);
     await deleteDoc(doc.id).catch(() => undefined);
     const rest = docs.filter((d) => d.id !== doc.id);
     setDocs(rest);
@@ -367,8 +404,8 @@ export function App() {
     [apply],
   );
 
-  const onResetLayout = useCallback(() => {
-    if (apply((t) => edit.clearPositions(t))) toast('Back to the automatic layout');
+  const onResetLayout = useCallback((ids: string[]) => {
+    if (apply((t) => edit.clearPositions(t, ids))) toast('Back to the automatic layout');
   }, [apply, toast]);
 
   const inspector: InspectorActions = {
@@ -408,10 +445,12 @@ export function App() {
     if (format === 'yaml') return download(`${base}.yaml`, text, 'text/yaml');
     if (!shownLayout) return toast('The tree is still being laid out', 'error');
     try {
-      const { svg, width, height } = await renderSvg(tree, shownLayout, text);
+      // an image carries the source of the tree it shows (the last valid one while the YAML is broken)
+      const source = lastGood.current.text;
+      const { svg, width, height } = await renderSvg(tree, shownLayout, source);
       if (format === 'svg') return download(`${base}.svg`, svg, 'image/svg+xml');
       const png = await renderPng(svg, width, height, 2);
-      download(`${base}.png`, pngWithSource(png, text));
+      download(`${base}.png`, pngWithSource(png, source));
     } catch (err) {
       console.error(err);
       toast('Export failed', 'error');
@@ -425,7 +464,12 @@ export function App() {
   };
 
   const share = async () => {
-    const hash = await encodeShare(text);
+    let hash: string;
+    try {
+      hash = await encodeShare(text);
+    } catch {
+      return toast('Could not create a share link in this browser', 'error');
+    }
     const url = `${window.location.origin}${window.location.pathname}${hash}`;
     if (await copyText(url)) toast('Share link copied. The whole tree travels inside the link.');
     else window.prompt('Copy this link', url);
@@ -447,8 +491,7 @@ export function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void persist();
-        toast('Saved in this browser');
+        void persist().then((ok) => ok && toast('Saved in this browser'));
       } else if (mod && e.key.toLowerCase() === 'z' && !inField) {
         e.preventDefault();
         if (e.shiftKey) editorApi.current?.redo();
@@ -456,15 +499,17 @@ export function App() {
       } else if (mod && e.key.toLowerCase() === 'y' && !inField) {
         e.preventDefault();
         editorApi.current?.redo();
-      } else if (mod && e.key === '\\') {
+      } else if (mod && !e.altKey && e.key === '\\') {
+        // Ctrl+Alt is AltGr on Windows, which is how many layouts type a backslash
         e.preventDefault();
         showEditor(editorHidden);
       } else if (e.key === 'Escape' && !inField) {
         setSelection(null);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // capture: panels such as the inspector stop key events from bubbling
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [persist, toast, showEditor, editorHidden]);
 
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -478,10 +523,13 @@ export function App() {
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
       writePref('attacktree:editor-width', String(width));
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
+    // a cancelled pointer never sends pointerup; without this, plain hovering would keep resizing
+    el.addEventListener('pointercancel', up);
   };
 
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
@@ -544,7 +592,7 @@ export function App() {
           </MenuItem>
           <MenuItem
             icon={<Copy size={14} />}
-            onSelect={() => void createAndOpen(text.replace(/^title:\s*(.*)$/m, (_, t) => `title: ${t} (copy)`), `${title} (copy)`)}
+            onSelect={() => void createAndOpen(withCopyTitle(text), `${title} (copy)`)}
           >
             Duplicate
           </MenuItem>

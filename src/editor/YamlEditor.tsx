@@ -7,7 +7,7 @@ import {
   type CompletionResult,
   completionKeymap,
 } from '@codemirror/autocomplete';
-import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory, redo, undo } from '@codemirror/commands';
 import { yaml } from '@codemirror/lang-yaml';
 import {
   bracketMatching,
@@ -139,15 +139,16 @@ function idCompletions(treeRef: RefObject<Tree>) {
       break;
     }
     if (!parent || !/^(from|filter):\s*(#.*)?$/.test(parent)) return null;
-    const options: Completion[] = treeRef.current.nodes
-      .filter((n) => !isGhost(n))
-      .map((n) => ({
-        label: n.id,
-        detail: n.kind === 'reality' ? 'Reality' : n.label,
-        type: n.kind,
-        boost: n.kind === 'reality' ? -1 : 0,
-        info: KIND_LABEL[n.kind],
-      }));
+    const nodes = treeRef.current.nodes.filter((n) => !isGhost(n));
+    // the implicit root is always a valid source, even before anything refers to it
+    if (!nodes.some((n) => n.id === 'reality')) nodes.push({ id: 'reality', kind: 'reality', label: 'Reality', declared: false });
+    const options: Completion[] = nodes.map((n) => ({
+      label: n.id,
+      detail: n.kind === 'reality' ? 'Reality' : n.label,
+      type: n.kind,
+      boost: n.kind === 'reality' ? -1 : 0,
+      info: KIND_LABEL[n.kind],
+    }));
     return { from: ctx.pos - item[2].length, options, validFor: /^[\w-]*$/ };
   };
 }
@@ -166,6 +167,12 @@ function marksFor(tree: Tree, length: number): DecorationSet {
     const src = byId.get(e.source);
     const kind = !src || isGhost(src) ? 'ghost' : src.kind;
     ranges.push(Decoration.mark({ class: `cm-node-ref cm-kind-${kind}` }).range(e.sourceRange.from, e.sourceRange.to));
+  }
+  for (const f of tree.filterRefs ?? []) {
+    if (!ok(f.range)) continue;
+    const node = byId.get(f.id);
+    const kind = !node || isGhost(node) ? 'ghost' : node.kind;
+    ranges.push(Decoration.mark({ class: `cm-node-ref cm-kind-${kind}` }).range(f.range.from, f.range.to));
   }
   return Decoration.set(ranges, true);
 }
@@ -203,6 +210,8 @@ export function YamlEditor({ docId, value, tree, onChange, onCursor, reveal, api
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
+          // historyKeymap binds Ctrl-Shift-z on Linux only; the documented redo works everywhere
+          { key: 'Mod-Shift-z', run: redo, preventDefault: true },
           ...searchKeymap,
           ...completionKeymap,
           indentWithTab,
@@ -267,7 +276,8 @@ export function YamlEditor({ docId, value, tree, onChange, onCursor, reveal, api
       }
       v.dispatch({
         changes: { from: start, to: endA, insert: value.slice(start, endB) },
-        annotations: [external.of(true), Transaction.addToHistory.of(true)],
+        // undoable, but as its own step: never merged with typing just before or after it
+        annotations: [external.of(true), Transaction.addToHistory.of(true), isolateHistory.of('full')],
       });
     }
     const length = v.state.doc.length;

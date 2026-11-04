@@ -2,7 +2,7 @@
  * Canvas edits are applied to the YAML document itself (not to a separate model),
  * so the text stays the single source of truth and keeps the user's comments.
  */
-import { type Document, isMap, isScalar, isSeq, parseDocument, Scalar, YAMLMap, YAMLSeq } from 'yaml';
+import { type Document, isMap, isNode, isScalar, isSeq, type Node, parseDocument, Scalar, visit, YAMLMap, YAMLSeq } from 'yaml';
 import { type DeclaredKind, KIND_SECTION, type Point, type SectionKey, SECTIONS } from './types';
 
 const ROOT_ORDER = ['title', 'theme', 'facts', 'attacks', 'mitigations', 'goals', 'filter', 'positions'];
@@ -17,14 +17,23 @@ function load(text: string): Doc {
   return doc;
 }
 
+// a top-level key (maybe with a comment), then any blank or comment lines, then the first list item
+const FLUSH_SEQ = /^[A-Za-z_][\w-]*:(?:[ \t]+#.*)?[ \t]*\r?\n(?:[ \t]*(?:#.*)?\r?\n)*-[ \t]/m;
+const INDENTED_SEQ = /^[A-Za-z_][\w-]*:(?:[ \t]+#.*)?[ \t]*\r?\n(?:[ \t]*(?:#.*)?\r?\n)*[ \t]+-[ \t]/m;
+
 /** deciduous files write list items flush with their key ("facts:\n- a: b"); keep whichever style is in use */
 function usesIndentedSeqs(text: string): boolean {
-  const flush = /^[A-Za-z_][\w-]*:[ \t]*\r?\n-[ \t]/m.test(text);
-  const indented = /^[A-Za-z_][\w-]*:[ \t]*\r?\n[ \t]+-[ \t]/m.test(text);
-  return indented || !flush;
+  return INDENTED_SEQ.test(text) || !FLUSH_SEQ.test(text);
 }
 
 function dump(doc: Doc, original: string): string {
+  // An emptied block list is written "[]" on a line of its own below its comments, unindented in
+  // flush style ("facts:\n# c\n[]"), which no longer parses. As a flow list it stays valid.
+  visit(doc, {
+    Seq(_, seq) {
+      if (seq.items.length === 0) seq.flow = true;
+    },
+  });
   return doc.toString({ indentSeq: usesIndentedSeqs(original), lineWidth: 0, nullStr: '', singleQuote: true });
 }
 
@@ -81,7 +90,6 @@ function sectionSeq(doc: Doc, section: SectionKey): YAMLSeq {
     return seq;
   }
   const key = new Scalar(section);
-  key.spaceBefore = root.items.length > 0;
   const pair = doc.createPair(key, seq);
   const order = ROOT_ORDER.indexOf(section);
   let at = root.items.length;
@@ -92,6 +100,10 @@ function sectionSeq(doc: Doc, section: SectionKey): YAMLSeq {
       break;
     }
   }
+  // a blank line between sections, but not at the very top of the document
+  key.spaceBefore = at > 0;
+  const below = root.items[at]?.key;
+  if (at === 0 && isNode(below)) below.spaceBefore = true;
   root.items.splice(at, 0, pair);
   return seq;
 }
@@ -114,16 +126,23 @@ export interface EdgeProps {
   ungrouped: boolean;
 }
 
+/** an edge label the way the parser reads it: any non-empty scalar, as text */
+function labelOf(node: unknown): string | undefined {
+  const value = isScalar(node) ? node.value : null;
+  return value == null || String(value) === '' ? undefined : String(value);
+}
+
+/** the connection as the parser sees it, so rewriting an entry changes nothing else */
 function entryProps(entry: unknown): EdgeProps {
   const props: EdgeProps = { backwards: false, implemented: true, ungrouped: false };
   if (isMap(entry)) {
     const [head, ...siblings] = entry.items;
-    const nested = isMap(head?.value) ? head.value.items : [];
-    const label = isScalar(head?.value) ? head.value.value : null;
-    if (typeof label === 'string' && label !== '') props.label = label;
+    const nested = isMap(head.value) ? head.value.items : [];
+    props.label = labelOf(head.value);
     for (const pair of [...nested, ...siblings]) {
       const key = keyOf(pair.key);
-      if (key === 'label' && isScalar(pair.value) && typeof pair.value.value === 'string') props.label = pair.value.value;
+      // "label" is only read beside nested flags; next to the id it is an unknown property
+      if (key === 'label' && nested.includes(pair)) props.label = labelOf(pair.value) ?? props.label;
       const value = isScalar(pair.value) ? pair.value.value : undefined;
       if (typeof value !== 'boolean') continue;
       if (key === 'backwards') props.backwards = value;
@@ -134,14 +153,42 @@ function entryProps(entry: unknown): EdgeProps {
   return props;
 }
 
+const EDGE_FLAGS = ['backwards', 'implemented', 'ungrouped'];
+
 function makeEntry(doc: Doc, source: string, props: EdgeProps): unknown {
   if (!props.label && !props.backwards && props.implemented && !props.ungrouped) return doc.createNode(source);
+  const flags = new YAMLMap();
+  if (props.backwards) flags.add(doc.createPair('backwards', true));
+  if (!props.implemented) flags.add(doc.createPair('implemented', false));
+  if (props.ungrouped) flags.add(doc.createPair('ungrouped', true));
   const map = new YAMLMap();
+  if (EDGE_FLAGS.includes(source)) {
+    // "- backwards:\n  backwards: true" would repeat a key; the parser also reads flags nested under the id
+    if (props.label) flags.items.unshift(doc.createPair('label', props.label));
+    map.add(doc.createPair(source, flags));
+    return map;
+  }
   map.add(doc.createPair(source, props.label ? props.label : null));
-  if (props.backwards) map.add(doc.createPair('backwards', true));
-  if (!props.implemented) map.add(doc.createPair('implemented', false));
-  if (props.ungrouped) map.add(doc.createPair('ungrouped', true));
+  map.items.push(...flags.items);
   return map;
+}
+
+/** A rebuilt "from" entry keeps the comments written in and around the old one. */
+function keepComments(old: Node, next: Node) {
+  next.spaceBefore = old.spaceBefore;
+  next.commentBefore = old.commentBefore;
+  const inside: string[] = [];
+  visit(old, {
+    Node(_, n) {
+      if (n === old) return;
+      for (const c of [n.commentBefore, n.comment]) if (c) inside.push(c);
+    },
+  });
+  if (old.comment) inside.push(old.comment);
+  if (inside.length === 0) return;
+  // after the id: "- id # note", or "- id: label # note" above its flags
+  const anchor = isMap(next) ? next.items[0].value : next;
+  if (isNode(anchor)) anchor.comment = inside.join('\n');
 }
 
 function dropEmptyFrom(item: YAMLMap) {
@@ -162,7 +209,10 @@ export function slugify(label: string): string {
 }
 
 function usedIds(doc: Doc): Set<string> {
-  const ids = new Set<string>(['reality', 'from']);
+  // the flags too: an entry "- backwards:" could not have its own backwards flag beside it
+  const ids = new Set<string>(['reality', 'from', ...EDGE_FLAGS]);
+  // validateId runs on whatever is in the editor; a document that is not a mapping declares nothing
+  if (!isMap(doc.contents)) return ids;
   for (const d of declarations(doc)) {
     const id = keyOf(d.item.items[0].key);
     if (id) ids.add(id);
@@ -173,7 +223,9 @@ function usedIds(doc: Doc): Set<string> {
 function uniqueId(doc: Doc, base: string): string {
   const used = usedIds(doc);
   if (!used.has(base)) return base;
-  for (let i = 2; ; i++) if (!used.has(`${base}_${i}`)) return `${base}_${i}`;
+  let i = 2;
+  while (used.has(`${base}_${i}`)) i++;
+  return `${base}_${i}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +265,7 @@ export function removeEdge(text: string, target: string, fromIndex: number): str
   const doc = load(text);
   const { item } = mustLocate(doc, target);
   const seq = fromSeq(item);
-  if (!seq || fromIndex >= seq.items.length) return text;
+  if (!seq || !Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= seq.items.length) return text;
   seq.items.splice(fromIndex, 1);
   dropEmptyFrom(item);
   return dump(doc, text);
@@ -228,7 +280,9 @@ export function updateEdge(text: string, target: string, fromIndex: number, patc
   if (!seq || !source) throw new MutationError('That connection no longer exists');
   const props = { ...entryProps(entry), ...patch };
   if (patch.label !== undefined && patch.label.trim() === '') props.label = undefined;
-  seq.items[fromIndex] = makeEntry(doc, source, props);
+  const next = makeEntry(doc, source, props) as Node;
+  keepComments(entry as Node, next);
+  seq.items[fromIndex] = next;
   return dump(doc, text);
 }
 
@@ -259,7 +313,14 @@ export function removeNodes(text: string, ids: string[]): string {
 export function setLabel(text: string, id: string, label: string): string {
   const doc = load(text);
   const { item } = mustLocate(doc, id);
-  item.items[0].value = doc.createNode(label);
+  const head = item.items[0];
+  const value = doc.createNode(label);
+  // keep a comment written after the label
+  if (isNode(head.value)) {
+    value.comment = head.value.comment;
+    value.commentBefore = head.value.commentBefore;
+  }
+  head.value = value;
   return dump(doc, text);
 }
 
@@ -275,7 +336,7 @@ export function setKind(text: string, id: string, kind: DeclaredKind): string {
 
 export function validateId(text: string, oldId: string, newId: string): string | null {
   if (newId === oldId) return null;
-  if (!/^[A-Za-z_][\w-]*$/.test(newId)) return 'Use letters, digits, "_" or "-", starting with a letter';
+  if (!/^[A-Za-z_][\w-]*$/.test(newId)) return 'Use letters, digits, "_" or "-", starting with a letter or "_"';
   const doc = parseDocument(text);
   if (usedIds(doc).has(newId)) return `"${newId}" is already taken`;
   return null;
@@ -295,8 +356,11 @@ export function renameId(text: string, oldId: string, newId: string): string {
   for (const d of declarations(doc)) fromSeq(d.item)?.items.forEach(rename);
   const filter = rootMap(doc).get('filter', true);
   if (isSeq(filter)) filter.items.forEach(rename);
-  for (const pair of positionsMap(doc)?.items ?? []) {
-    if (keyOf(pair.key) === oldId) pair.key = doc.createNode(newId);
+  const positions = positionsMap(doc);
+  if (positions) {
+    // an entry already under the new id (a ghost's, or a leftover) would become a duplicate key: the node's own wins
+    if (positions.items.some((p) => keyOf(p.key) === oldId)) positions.items = positions.items.filter((p) => keyOf(p.key) !== newId);
+    for (const pair of positions.items) if (keyOf(pair.key) === oldId) pair.key = doc.createNode(newId);
   }
   return dump(doc, text);
 }
@@ -316,7 +380,8 @@ function dropEmptyPositions(doc: Doc) {
 }
 
 export function setPositions(text: string, moved: Record<string, Point>): string {
-  const ids = Object.keys(moved);
+  // NaN or Infinity would be written as .nan / .inf, which the parser rejects
+  const ids = Object.keys(moved).filter((id) => Number.isFinite(moved[id].x) && Number.isFinite(moved[id].y));
   if (ids.length === 0) return text;
   const doc = load(text);
   const root = rootMap(doc);
@@ -331,11 +396,14 @@ export function setPositions(text: string, moved: Record<string, Point>): string
   }
   map.flow = false;
   for (const id of ids) {
-    const xy = doc.createNode([Math.round(moved[id].x), Math.round(moved[id].y)]) as YAMLSeq;
+    // "|| 0" so that -0.4 is written as 0, not -0
+    const xy = doc.createNode([Math.round(moved[id].x) || 0, Math.round(moved[id].y) || 0]) as YAMLSeq;
     xy.flow = true;
     const existing = map.items.find((p) => keyOf(p.key) === id);
-    if (existing) existing.value = xy;
-    else map.items.push(doc.createPair(id, xy));
+    if (existing) {
+      if (isNode(existing.value)) xy.comment = existing.value.comment;
+      existing.value = xy;
+    } else map.items.push(doc.createPair(id, xy));
   }
   return dump(doc, text);
 }

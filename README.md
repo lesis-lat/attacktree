@@ -96,9 +96,18 @@ Os links levam `utm_source=attacktree&utm_medium=app|docs|export`, para medir de
 ```sh
 npm install
 npm run dev        # http://0.0.0.0:4100
-npm test           # parser, mutações, análise, embed
+npm test           # a suíte inteira (~1000 testes, jsdom)
+npm run coverage   # com cobertura; falha abaixo de 100% de linhas/funções e 98% de branches
 npm run build      # typecheck + build de produção em dist/
 ```
+
+## Testes
+
+A suíte cobre o modelo (parser e mutações, com testes de propriedade sobre vários documentos), o layout com o ELK real, as exportações (SVG validado com DOMParser e fonte embutida que volta intacta), o canvas com o React Flow real, o editor CodeMirror, a documentação e o App de ponta a ponta (IndexedDB falso, links de compartilhamento, importação e exportação, atalhos). Cada bug encontrado entra primeiro como um teste que falha. O CI roda o typecheck e a cobertura antes de publicar.
+
+- Ambiente: `src/test/setup.ts` (jsdom, matchers do jest-dom, `fake-indexeddb` e as APIs de navegador que o jsdom não tem).
+- Os testes ficam ao lado do código (`*.test.ts(x)`).
+- Os poucos branches não cobertos são defensivos e inalcançáveis.
 
 ## Publicação (GitHub Pages)
 

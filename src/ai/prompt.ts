@@ -35,12 +35,27 @@ MY REQUEST
 `;
 }
 
-const FENCED = /```[^\n]*\n([\s\S]*?)```/g;
+/** A Markdown fence line: three or more backticks at the start of a line (up to 3 spaces of indent). */
+const FENCE = /^ {0,3}`{3,}/;
 
-/** Assistants wrap YAML in Markdown fences, often with prose around them. Keep the YAML. */
+/**
+ * Assistants wrap YAML in Markdown fences, often with prose around them. Keep the YAML:
+ * the longest fenced block, or what follows an opening fence when the reply was cut short.
+ * Backticks inside a line ("use ``` for code") are not fences.
+ */
 export function stripFences(text: string): string {
   if (!text.includes('```')) return text;
-  const blocks = [...text.matchAll(FENCED)].map((m) => m[1]);
-  if (blocks.length === 0) return text.replace(/^```[^\n]*\n?|```\s*$/g, '');
-  return blocks.sort((a, b) => b.length - a.length)[0];
+  const lines = text.match(/[^\n]*(?:\n|$)/g)!.slice(0, -1);
+  const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
+  if (fences.length === 0) return text;
+  const between = (from: number, to: number) => lines.slice(from, to).join('');
+  const blocks: string[] = [];
+  for (let k = 0; k + 1 < fences.length; k += 2) blocks.push(between(fences[k] + 1, fences[k + 1]));
+  if (fences.length % 2 === 1) {
+    const last = fences[fences.length - 1];
+    const after = between(last + 1, lines.length);
+    // a lone fence with only blank text after it closes a block that was pasted without its start
+    blocks.push(fences.length === 1 && after.trim() === '' ? between(0, last) : after);
+  }
+  return blocks.reduce((a, b) => (b.length > a.length ? b : a));
 }

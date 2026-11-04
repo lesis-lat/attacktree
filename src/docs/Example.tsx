@@ -12,7 +12,7 @@ import { highlightYaml } from './highlight';
 /** A YAML snippet next to the diagram the real layout engine draws for it. */
 export function Example({ source, theme }: { source: string; theme: string }) {
   const [svg, setSvg] = useState<string | null>(null);
-  const [href, setHref] = useState('/');
+  const [href, setHref] = useState(import.meta.env.BASE_URL);
   const [copied, setCopied] = useState(false);
   const prefix = `ex${useId().replace(/[^a-z0-9]/gi, '')}`;
 
@@ -32,7 +32,14 @@ export function Example({ source, theme }: { source: string; theme: string }) {
   }, [source, theme, prefix]);
 
   useEffect(() => {
-    encodeShare(source).then((hash) => setHref(`/${hash}`));
+    let cancelled = false;
+    // the editor lives at the site root, which is a subpath on GitHub Pages
+    encodeShare(source).then((hash) => {
+      if (!cancelled) setHref(`${import.meta.env.BASE_URL}${hash}`);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [source]);
 
   const title = source.match(/^title:\s*(.+)$/m)?.[1];

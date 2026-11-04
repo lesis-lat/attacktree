@@ -25,6 +25,16 @@ function rangeOf(node: unknown): Range | undefined {
   return r ? { from: r[0], to: Math.max(r[1], r[0] + 1) } : undefined;
 }
 
+/** "key:" with nothing after it: yaml gives the value as an empty scalar, not as null */
+function isEmpty(node: unknown): boolean {
+  return node == null || (isScalar(node) && node.value == null);
+}
+
+/** where to point at a pair's value; an empty value has no text of its own, so point at its key */
+function valueRange(pair: { key: unknown; value: unknown }): Range | undefined {
+  return (isEmpty(pair.value) ? undefined : rangeOf(pair.value)) ?? rangeOf(pair.key);
+}
+
 /** string for scalars, null for empty values, undefined for collections */
 function scalarText(node: unknown): string | null | undefined {
   if (node == null) return null;
@@ -46,7 +56,9 @@ export function parseTree(text: string): Tree {
   const nodes = new Map<string, TreeNode>();
   const rawEdges: TreeEdge[] = [];
   const filter: string[] = [];
-  const positions: Record<string, Point> = {};
+  const filterRefs: Array<{ id: string; range: Range }> = [];
+  // no prototype: "__proto__" or "constructor" are valid node ids
+  const positions: Record<string, Point> = Object.create(null);
   const positionRefs: Array<{ id: string; range?: Range }> = [];
   const refs: Array<{ id: string; range?: Range }> = [];
   let title = '';
@@ -67,7 +79,7 @@ export function parseTree(text: string): Tree {
   const syntaxCount = diagnostics.length;
 
   const parseFrom = (target: string, value: unknown) => {
-    if (value == null) return;
+    if (isEmpty(value)) return;
     if (!isSeq(value)) {
       report('error', rangeOf(value), '"from" must be a list of node ids');
       return;
@@ -100,7 +112,7 @@ export function parseTree(text: string): Tree {
           } else if (typeof key === 'string' && EDGE_FLAGS.has(key)) {
             const flag = isScalar(pair.value) ? pair.value.value : undefined;
             if (typeof flag !== 'boolean') {
-              report('error', rangeOf(pair.value) ?? rangeOf(pair.key), `"${key}" must be true or false`);
+              report('error', valueRange(pair), `"${key}" must be true or false`);
             } else if (key === 'backwards') backwards = flag;
             else if (key === 'implemented') implemented = flag;
             else ungrouped = flag;
@@ -210,7 +222,7 @@ export function parseTree(text: string): Tree {
           break;
         }
         case 'filter': {
-          if (value == null) break;
+          if (isEmpty(value)) break;
           if (!isSeq(value)) {
             report('error', rangeOf(value), '"filter" must be a list of node ids');
             break;
@@ -220,6 +232,8 @@ export function parseTree(text: string): Tree {
             if (typeof v === 'string' && v !== '') {
               filter.push(v);
               refs.push({ id: v, range: rangeOf(entry) });
+              const range = rangeOf(entry);
+              if (range) filterRefs.push({ id: v, range });
             } else {
               report('error', rangeOf(entry), 'Each filter entry must be a node id');
             }
@@ -227,7 +241,7 @@ export function parseTree(text: string): Tree {
           break;
         }
         case 'positions': {
-          if (value == null) break;
+          if (isEmpty(value)) break;
           if (!isMap(value)) {
             report('error', rangeOf(value), '"positions" maps node ids to [x, y]');
             break;
@@ -236,7 +250,7 @@ export function parseTree(text: string): Tree {
             const id = scalarText(entry.key);
             const xy = isSeq(entry.value) ? entry.value.items.map((n) => (isScalar(n) ? n.value : null)) : [];
             if (typeof id !== 'string' || xy.length !== 2 || !xy.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-              report('error', rangeOf(entry.value) ?? rangeOf(entry.key), 'Write a position as "id: [x, y]"');
+              report('error', valueRange(entry), 'Write a position as "id: [x, y]"');
               continue;
             }
             positions[id] = { x: xy[0] as number, y: xy[1] as number };
@@ -248,7 +262,7 @@ export function parseTree(text: string): Tree {
         case 'legend':
           break;
         default: {
-          if (value == null) break;
+          if (isEmpty(value)) break;
           if (!isSeq(value)) {
             report('error', rangeOf(value) ?? keyRange, `"${key}" must be a list`);
             break;
@@ -306,6 +320,7 @@ export function parseTree(text: string): Tree {
     nodes: ordered,
     edges,
     filter,
+    filterRefs,
     positions,
     diagnostics: shown,
     syntaxError,

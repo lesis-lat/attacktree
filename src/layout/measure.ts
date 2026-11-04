@@ -3,6 +3,8 @@ import type { TreeNode } from '../model/types';
 /** Keep in sync with .tree-node in styles.css — the canvas renders exactly these lines. */
 export const FONT_FAMILY = '"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
 export const NODE_FONT = `500 13px ${FONT_FAMILY}`;
+/** .tree-node.kind-reality is bold */
+export const REALITY_FONT = `600 13px ${FONT_FAMILY}`;
 export const EDGE_LABEL_FONT = `600 11px ${FONT_FAMILY}`;
 
 export const METRICS = {
@@ -30,7 +32,7 @@ export interface Box {
 
 let ctx: CanvasRenderingContext2D | null = null;
 
-function textWidth(text: string, font: string): number {
+export function textWidth(text: string, font: string): number {
   ctx ??= document.createElement('canvas').getContext('2d');
   if (!ctx) return text.length * 7;
   ctx.font = font;
@@ -49,12 +51,14 @@ export function wrap(text: string, max: number, font: string): string[] {
       }
       if (line) lines.push(line);
       line = word;
-      // a single word wider than the box: break it
-      while (textWidth(line, font) > max && line.length > 1) {
-        let cut = line.length - 1;
-        while (cut > 1 && textWidth(line.slice(0, cut), font) > max) cut--;
-        lines.push(line.slice(0, cut));
-        line = line.slice(cut);
+      // a single word wider than the box: break it, between code points (never inside an emoji's surrogate pair)
+      let chars = Array.from(word);
+      while (textWidth(line, font) > max && chars.length > 1) {
+        let cut = chars.length - 1;
+        while (cut > 1 && textWidth(chars.slice(0, cut).join(''), font) > max) cut--;
+        lines.push(chars.slice(0, cut).join(''));
+        chars = chars.slice(cut);
+        line = chars.join('');
       }
     }
     lines.push(line);
@@ -66,8 +70,9 @@ const widest = (lines: string[], font: string) => Math.max(0, ...lines.map((l) =
 
 export function measureNode(node: TreeNode): Box {
   const m = METRICS;
-  const lines = wrap(node.label, m.maxText, NODE_FONT);
-  const text = widest(lines, NODE_FONT) + 2;
+  const font = node.kind === 'reality' ? REALITY_FONT : NODE_FONT;
+  const lines = wrap(node.label, m.maxText, font);
+  const text = widest(lines, font) + 2;
   if (node.kind === 'reality') {
     return {
       width: Math.ceil(Math.max(96, text + m.realityPadX * 2)),

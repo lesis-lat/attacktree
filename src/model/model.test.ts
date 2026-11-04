@@ -184,8 +184,7 @@ describe('embedded source', () => {
 
 describe('documentation', () => {
   it('every live example in the guide is a valid tree', async () => {
-    const { readFileSync } = await import('node:fs');
-    const guide = readFileSync(new URL('../docs/guide.md', import.meta.url), 'utf8');
+    const { default: guide } = await import('../docs/guide.md?raw');
     const examples = [...guide.matchAll(/```yaml example\n([\s\S]*?)```/g)].map((m) => m[1]);
     expect(examples.length).toBeGreaterThan(4);
     for (const source of examples) {

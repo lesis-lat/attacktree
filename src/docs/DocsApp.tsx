@@ -108,12 +108,18 @@ export function DocsApp() {
   const active = useActiveHeading(sectionIds);
 
   // the hero is everything before the first section
-  const firstSection = tokens.findIndex((t) => t.type === 'heading' && (t as Tokens.Heading).depth === 2);
+  const found = tokens.findIndex((t) => t.type === 'heading' && (t as Tokens.Heading).depth === 2);
+  const firstSection = found < 0 ? tokens.length : found;
   const hero = tokens.slice(0, firstSection);
   const body = tokens.slice(firstSection);
 
   useEffect(() => {
-    const id = decodeURIComponent(window.location.hash.slice(1));
+    let id = '';
+    try {
+      id = decodeURIComponent(window.location.hash.slice(1));
+    } catch {
+      return; // a malformed link must not take the page down
+    }
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
   }, []);
 
@@ -140,7 +146,7 @@ export function DocsApp() {
           <button type="button" className="icon-button docs-nav-toggle" onClick={() => setNavOpen(!navOpen)} aria-label="Contents">
             {navOpen ? <X size={17} /> : <MenuIcon size={17} />}
           </button>
-          <a className="button primary" href="/">
+          <a className="button primary" href={import.meta.env.BASE_URL}>
             Open the editor <ArrowRight size={15} />
           </a>
           <button type="button" className="icon-button" onClick={theme.toggle} title={themeLabel} aria-label={themeLabel}>

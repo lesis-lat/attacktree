@@ -27,7 +27,8 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm test
+      - run: npx tsc --noEmit && npx tsc -p tsconfig.node.json
+      - run: npm run coverage
 
       - id: pages
         uses: actions/configure-pages@v5

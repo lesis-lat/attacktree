@@ -162,7 +162,8 @@ interface Props {
   onDelete(nodeIds: string[], edgeIds: string[]): void;
   onEditLabel(): void;
   onMove(moved: Record<string, { x: number; y: number }>): void;
-  onResetLayout(): void;
+  /** forget the hand-placed positions of these nodes (the ones on screen) */
+  onResetLayout(ids: string[]): void;
 }
 
 export function TreeCanvas(props: Props) {
@@ -174,7 +175,8 @@ export function TreeCanvas(props: Props) {
 
   const focus = useMemo(() => {
     if (!selection) return null;
-    if (selection.type === 'node') return lineage(tree, selection.id);
+    // a stale selection (the node was just undone or deleted in the YAML) must not dim the whole tree
+    if (selection.type === 'node') return tree.nodes.some((n) => n.id === selection.id) ? lineage(tree, selection.id) : null;
     const edge = tree.edges.find((e) => e.id === selection.id);
     return edge ? { nodes: new Set([edge.source, edge.target]), edges: new Set([edge.id]) } : null;
   }, [tree, selection]);
@@ -292,8 +294,11 @@ export function TreeCanvas(props: Props) {
     [tree],
   );
 
-  const onConnectEnd = useCallback((_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+  const onConnectEnd = useCallback((event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
     if (state.isValid || !state.fromNode || state.toNode) return;
+    // Only a drop on empty canvas adds the next step, not one on a node that cannot take the connection.
+    const point = 'changedTouches' in event ? event.changedTouches[0] : event;
+    if (!point || document.elementFromPoint(point.clientX, point.clientY)?.closest('.react-flow__node')) return;
     callbacks.current.onCreateFrom(state.fromNode.id);
   }, []);
 
@@ -305,7 +310,9 @@ export function TreeCanvas(props: Props) {
   }, []);
 
   const empty = tree.nodes.length === 0;
-  const pinnedCount = Object.keys(tree.positions).filter((id) => layout?.nodes.has(id)).length;
+  // only what is on screen: nodes hidden by `filter` keep their positions
+  const pinnedIds = Object.keys(tree.positions).filter((id) => layout?.nodes.has(id));
+  const pinnedCount = pinnedIds.length;
 
   return (
     <div className="canvas" ref={host}>
@@ -366,7 +373,7 @@ export function TreeCanvas(props: Props) {
               type="button"
               className="auto-arrange"
               title={`Auto-arrange: forget the ${pinnedCount} position${pinnedCount > 1 ? 's' : ''} set by hand`}
-              onClick={props.onResetLayout}
+              onClick={() => props.onResetLayout(pinnedIds)}
             >
               <WandSparkles size={14} />
               <span>Auto-arrange</span>

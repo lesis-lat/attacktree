@@ -4,7 +4,7 @@ attacktree is a free, browser-based editor for **attack trees and decision trees
 
 Everything runs in your browser. Trees are saved locally, and share links carry the whole tree inside the URL. Nothing is uploaded.
 
-attacktree is built and maintained by [LESIS](https://lesis.lat), a security engineering team that does security assessments, security consultancy, due diligence and custom tools.
+attacktree is built and maintained by [LESIS](https://lesis.lat/?utm_source=attacktree&utm_medium=docs), a security engineering team that does security assessments, security consultancy, due diligence and custom tools.
 
 ## Introduction
 
@@ -101,7 +101,7 @@ attacks:
   - reality
 ```
 
-- **Ids** are short and unique across the whole tree: letters, digits, `_` and `-`, starting with a letter. They are used in `from` lists and never shown on the diagram.
+- **Ids** are short and unique across the whole tree: letters, digits, `_` and `-`, starting with a letter or `_`. They are used in `from` lists and never shown on the diagram.
 - **Labels** are free text. If the label is empty (`- phish_admin:`), it is derived from the id ("Phish admin").
 - `from` lists where the node comes from. Leave it out for a node with no parents.
 - A node declared twice is an error, even in different sections.
@@ -286,7 +286,7 @@ Trees work best when they are built together. A 45-minute session with the peopl
 | Edit a label | Double-click the node, or use the inspector. Enter confirms, Shift+Enter adds a line. |
 | Change kind | Use the Fact / Attack / Mitigation / Goal switch in the inspector. |
 | Rename an id | Edit **Id** in the inspector. Every reference is updated. |
-| Add a node | **Add** in the toolbar. If a node is selected, the new node comes from it. Otherwise it comes from Reality. |
+| Add a node | **Add** in the toolbar. If a node is selected, the new node comes from it. Otherwise a fact or an attack comes from Reality, and a mitigation or a goal starts unconnected. |
 | Add the next step | Drag from the handle under a node and drop on empty space. After an attack comes a mitigation, and after anything else comes an attack. |
 | Connect two nodes | Drag from the handle under a node and drop it anywhere on the other node. |
 | Edit a connection | Click the arrow or its label. The inspector toggles `#yolosec`, backwards and not implemented. |
@@ -336,7 +336,7 @@ Problems are underlined in the editor and counted in the status bar. Click the c
 
 The format is small and regular, which makes it a good fit for language models.
 
-- **Copy for AI** (in the **Share** menu) copies a ready-made prompt: the format rules, the conventions above and the current tree. Paste it into your assistant, then say what you want: "add the insider threat branch", "suggest mitigations for every #yolosec edge", "translate the labels into Portuguese".
+- **Copy for AI** (in the top bar, and **Copy prompt for AI** in the menu next to the title) copies a ready-made prompt: the format rules, the conventions above and the current tree. Paste it into your assistant, then say what you want: "add the insider threat branch", "suggest mitigations for every #yolosec edge", "translate the labels into Portuguese".
 - **Pasting answers back:** paste the model's answer straight into the editor. Markdown code fences (```` ```yaml ````) are removed for you. **Import** removes them from files too.
 - **Machine-readable docs:** [`/llms.txt`](/llms.txt) and [`/llms-full.txt`](/llms-full.txt) describe the tool and the format in plain text, following the llms.txt convention, and [`/attacktree.schema.json`](/attacktree.schema.json) is the JSON Schema.
 
@@ -384,4 +384,4 @@ They are referenced in a `from` list but never declared. Declare them in the rig
 Yes. Use attacks for failure events, mitigations for the controls that contain them (retries, alerts, fallbacks), and goals for the outcomes you want to avoid.
 
 **Who makes attacktree?**
-[LESIS](https://lesis.lat), a security engineering team: security assessments, security consultancy, due diligence and custom tools, delivered and tracked to closure. Write to them if you want help modeling your own systems.
+[LESIS](https://lesis.lat/?utm_source=attacktree&utm_medium=docs), a security engineering team: security assessments, security consultancy, due diligence and custom tools, delivered and tracked to closure. Write to them if you want help modeling your own systems.

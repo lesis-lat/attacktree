@@ -59,8 +59,9 @@ function boundsOf(nodes: Iterable<PlacedNode>, edges: Iterable<PlacedEdge>): Bou
 
 /** The automatic layout with the user's dragged positions applied on top. */
 export function withPins(base: Layout, tree: Tree, pins: Record<string, Point>): Layout {
-  const pinned = Object.keys(pins).filter((id) => base.nodes.has(id));
-  if (pinned.length === 0) return base;
+  // own keys only: `in` would also match "constructor", "toString"... which are valid node ids
+  const pinned = new Set(Object.keys(pins).filter((id) => base.nodes.has(id)));
+  if (pinned.size === 0) return base;
 
   const nodes = new Map(base.nodes);
   for (const id of pinned) nodes.set(id, { ...base.nodes.get(id)!, x: pins[id].x, y: pins[id].y });
@@ -68,7 +69,7 @@ export function withPins(base: Layout, tree: Tree, pins: Record<string, Point>):
   const edges = new Map(base.edges);
   for (const e of tree.edges) {
     const old = edges.get(e.id);
-    if (!old || !(e.source in pins || e.target in pins)) continue;
+    if (!old || !(pinned.has(e.source) || pinned.has(e.target))) continue;
     const s = nodes.get(e.source);
     const t = nodes.get(e.target);
     if (!s || !t) continue;
