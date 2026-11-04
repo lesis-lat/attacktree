@@ -15,7 +15,7 @@ const guide = rawGuide.replace(/\]\(\//g, `](${import.meta.env.BASE_URL}`);
 const slug = (text: string) =>
   text
     .toLowerCase()
-    .replace(/<[^>]+>|`/g, '')
+    .replace(/[<>`]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
