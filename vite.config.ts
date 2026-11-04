@@ -43,9 +43,43 @@ function docsForMachines(): Plugin {
   };
 }
 
+/**
+ * Everything the site loads comes from its own origin, and no script is inline or
+ * evaluated, so an injected <script> or event handler would never run.
+ * - style 'unsafe-inline': CodeMirror and React Flow set styles at runtime.
+ * - img/font data: and blob:: exports inline the fonts and logo, and the PNG is drawn from a blob.
+ * Build only: the dev server injects inline scripts for hot reload.
+ * Pages cannot send headers, so frame-ancestors (ignored in a <meta>) is not set here.
+ */
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+].join('; ');
+
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: 'attacktree-csp',
+    apply: 'build',
+    // right after the charset, before any script
+    transformIndexHtml: (html) => {
+      const charset = '<meta charset="UTF-8" />';
+      if (!html.includes(charset)) throw new Error('attacktree-csp: no <meta charset> to put the policy after');
+      return html.replace(charset, `${charset}\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`);
+    },
+  };
+}
+
 export default defineConfig({
   base,
-  plugins: [react(), docsForMachines()],
+  plugins: [react(), docsForMachines(), contentSecurityPolicy()],
   server: { host: '0.0.0.0', port: 4100, strictPort: true },
   preview: { host: '0.0.0.0', port: 4100, strictPort: true },
   test: {

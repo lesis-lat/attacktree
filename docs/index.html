@@ -11,13 +11,8 @@
     <meta property="og:description" content="Model attack trees and decision trees in your browser. Built by LESIS." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate" type="text/markdown" title="Full documentation for language models" href="%BASE_URL%llms-full.txt" />
-    <script>
-      try {
-        var p = localStorage.getItem('attacktree:theme');
-        var dark = p === 'dark' || (p !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); // same rule as src/ui/theme.ts
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-      } catch (e) {}
-    </script>
+    <!-- picks the theme before first paint; a file, so the CSP can refuse inline scripts -->
+    <script src="%BASE_URL%theme.js"></script>
   </head>
   <body>
     <div id="root"></div>
