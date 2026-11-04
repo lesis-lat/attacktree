@@ -122,6 +122,15 @@ Cada push em `main` roda os testes, gera o build e publica o site pelo workflow 
 - Para testar localmente com o mesmo caminho: `BASE_PATH=/attacktree/ npm run build && BASE_PATH=/attacktree/ npm run preview`.
 - Ativação, feita uma vez: em **Settings → Pages**, escolha **GitHub Actions** em **Source**.
 
+## Segurança
+
+Vulnerabilidades: veja [SECURITY.md](SECURITY.md); o reporte é privado, pela aba Security.
+
+- Pull requests passam por `.github/workflows/ci.yml`: audit, typecheck, testes com cobertura e build.
+- `.github/workflows/codeql.yml` analisa o TypeScript e os workflows.
+- `.github/dependabot.yml` abre as atualizações semanais. Antes de mesclar um PR do Dependabot, confira se o CI ficou verde.
+- O build põe uma Content-Security-Policy em `<meta>` (veja `CSP` em `vite.config.ts`): scripts só da própria origem, sem inline e sem `eval`. Ela não vale em `npm run dev`, porque o Vite injeta scripts inline para o hot reload. Ao adicionar algo que carregue recursos de outra origem, ajuste a política e confira no `npm run preview`.
+
 ## Licença
 
 A definir.
