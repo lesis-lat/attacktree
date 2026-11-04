@@ -27,7 +27,7 @@ jobs:
         # the app's TypeScript, and the workflows themselves (injection, excessive permissions)
         language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: github/codeql-action/init@v4
         with:
