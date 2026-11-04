@@ -34,7 +34,7 @@ import { readTreeFile } from './model/embed';
 import { BLANK_TREE, EXAMPLE_CICD } from './model/examples';
 import * as edit from './model/mutate';
 import { parseTree } from './model/parse';
-import { decodeShare, encodeShare } from './model/share';
+import { decodeShare, encodeShare, ShareTooLargeError } from './model/share';
 import { type DeclaredKind, isGhost, type Tree } from './model/types';
 import {
   createDoc,
@@ -244,8 +244,8 @@ export function App() {
     let shared: string | null = null;
     try {
       shared = await decodeShare(window.location.hash);
-    } catch {
-      toast('This share link is damaged', 'error');
+    } catch (error) {
+      toast(error instanceof ShareTooLargeError ? error.message : 'This share link is damaged', 'error');
     }
     if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
     if (shared === null) return false;
@@ -282,8 +282,15 @@ export function App() {
 
   const removeCurrent = async () => {
     if (!doc) return;
+    // marked first, so an autosave already in flight cannot bring the tree back
     deleted.current.add(doc.id);
-    await deleteDoc(doc.id).catch(() => undefined);
+    try {
+      await deleteDoc(doc.id);
+    } catch {
+      deleted.current.delete(doc.id);
+      toast('Could not delete this tree; it is still saved in this browser', 'error');
+      return;
+    }
     const rest = docs.filter((d) => d.id !== doc.id);
     setDocs(rest);
     refs.current.doc = null;

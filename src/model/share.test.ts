@@ -2,7 +2,7 @@
 // Blob.stream(), CompressionStream and Response working together, as in browsers; jsdom's Blob has no stream().
 import { describe, expect, it } from 'vitest';
 import { EXAMPLE_CICD } from './examples';
-import { decodeShare, encodeShare } from './share';
+import { decodeShare, encodeShare, MAX_SHARED_BYTES, ShareTooLargeError } from './share';
 
 /** a deterministic, poorly compressible text */
 function noise(length: number): string {
@@ -66,6 +66,29 @@ describe('share links', () => {
     // not deflate data at all
     await expect(decodeShare('#tree=AAAAAAAAAAAAAAAA')).rejects.toThrow();
     await expect(decodeShare('#tree=_____________')).rejects.toThrow();
+  });
+
+  it('opens a tree exactly at the size limit', async () => {
+    const source = 'a'.repeat(MAX_SHARED_BYTES);
+    expect(await decodeShare(await encodeShare(source))).toBe(source);
+  });
+
+  it('refuses a tree one byte over the size limit', async () => {
+    const hash = await encodeShare('a'.repeat(MAX_SHARED_BYTES + 1));
+    await expect(decodeShare(hash)).rejects.toBeInstanceOf(ShareTooLargeError);
+  });
+
+  it('refuses a decompression bomb: a short link that expands to far more than any tree', async () => {
+    const hash = await encodeShare('\n'.repeat(50_000_000));
+    // about 50 KB of link for 50 MB of text
+    expect(hash.length).toBeLessThan(100_000);
+    await expect(decodeShare(hash)).rejects.toThrow('This share link is too large to open');
+  });
+
+  it('counts the limit in bytes, not characters', async () => {
+    // "é" is two bytes in UTF-8
+    const hash = await encodeShare('é'.repeat(MAX_SHARED_BYTES / 2 + 1));
+    await expect(decodeShare(hash)).rejects.toBeInstanceOf(ShareTooLargeError);
   });
 
   it('rejects base64 of an impossible length', async () => {

@@ -23,6 +23,7 @@ const ctl = vi.hoisted(() => ({
   saveFail: false,
   saveGate: null as Promise<unknown> | null,
   deleteGate: null as Promise<unknown> | null,
+  deleteFail: false,
   canvas: null as unknown,
 }));
 
@@ -59,6 +60,7 @@ vi.mock('./store/docs', async (importOriginal) => {
     },
     // the delete is issued at once (like IndexedDB), but completes late
     deleteDoc: (id: string) => {
+      if (ctl.deleteFail) return Promise.reject(new Error('blocked'));
       const done = real.deleteDoc(id);
       return ctl.deleteGate ? done.then(() => ctl.deleteGate) : done;
     },
@@ -94,7 +96,7 @@ import * as exporters from './export/exporters';
 import { extractEmbedded } from './model/embed';
 import { BLANK_TREE, EXAMPLE_CICD } from './model/examples';
 import { parseTree } from './model/parse';
-import { decodeShare, encodeShare } from './model/share';
+import { decodeShare, encodeShare, MAX_SHARED_BYTES } from './model/share';
 
 const download = vi.mocked(exporters.download);
 const renderPng = vi.mocked(exporters.renderPng);
@@ -268,7 +270,7 @@ const clipboard = { writeText: vi.fn<(text: string) => Promise<void>>() };
 
 beforeEach(async () => {
   await clear(idb);
-  Object.assign(ctl, { elkFail: false, elkGate: null, listFail: false, listGate: null, saveFail: false, saveGate: null, deleteGate: null, canvas: null });
+  Object.assign(ctl, { elkFail: false, elkGate: null, listFail: false, listGate: null, saveFail: false, saveGate: null, deleteGate: null, deleteFail: false, canvas: null });
   history.replaceState(null, '', '/');
   document.documentElement.removeAttribute('data-theme');
   download.mockClear();
@@ -359,6 +361,14 @@ describe('opening trees', () => {
     expect(await screen.findByText('This share link is damaged')).toBeInTheDocument();
     expect(window.location.hash).toBe('');
     expect(docTitle()).toBe('Ship a malicious release through CI/CD');
+    expect(await allDocs()).toHaveLength(1);
+  });
+
+  it('refuses a share link that expands past the size limit', async () => {
+    history.replaceState(null, '', `/${await encodeShare('\n'.repeat(MAX_SHARED_BYTES + 1))}`);
+    await mountReady('malicious_release');
+    expect(await screen.findByText('This share link is too large to open')).toBeInTheDocument();
+    expect(window.location.hash).toBe('');
     expect(await allDocs()).toHaveLength(1);
   });
 
@@ -689,6 +699,24 @@ describe('the tree menu', () => {
     await waitFor(() => expect(flowNode('win')).toBeTruthy());
     expect(toastTexts()).toEqual([]);
     expect(await allDocs()).toHaveLength(1);
+  });
+
+  it('says so when the browser refuses to delete, and keeps the tree open and saving', async () => {
+    const kept = await seed(SMALL);
+    await mountReady('win');
+    ctl.deleteFail = true;
+    openDocMenu();
+    const del = menuItem('Delete this tree');
+    fireEvent.click(del);
+    fireEvent.click(del);
+    expect(await screen.findByText('Could not delete this tree; it is still saved in this browser')).toBeInTheDocument();
+    expect(toastTexts()).not.toContain('Tree deleted');
+    expect(docTitle()).toBe('Small tree');
+    expect(await allDocs()).toHaveLength(1);
+    // the failed delete must not leave the tree marked as deleted: later edits still reach storage
+    ctl.deleteFail = false;
+    typeYaml(SMALL.replace('Small tree', 'Still here'));
+    await waitFor(async () => expect((await storedDoc(kept.id))?.title).toBe('Still here'));
   });
 
   it('duplicates an untitled tree', async () => {

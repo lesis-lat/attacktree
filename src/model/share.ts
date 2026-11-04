@@ -24,9 +24,44 @@ export async function encodeShare(source: string): Promise<string> {
   return `#tree=${toBase64Url(packed)}`;
 }
 
+/** Same ceiling as files read back from exports. A link is untrusted input: a few KB can inflate to gigabytes. */
+export const MAX_SHARED_BYTES = 4_000_000;
+
+export class ShareTooLargeError extends Error {
+  constructor() {
+    super('This share link is too large to open');
+    this.name = 'ShareTooLargeError';
+  }
+}
+
+/** inflates chunk by chunk and stops at the limit, so a decompression bomb never reaches memory */
+async function inflateCapped(bytes: Uint8Array<ArrayBuffer>, limit: number): Promise<Uint8Array> {
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      // stop inflating; a failure to cancel changes nothing, the link is refused either way
+      await Promise.allSettled([reader.cancel()]);
+      throw new ShareTooLargeError();
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 export async function decodeShare(hash: string): Promise<string | null> {
   const match = hash.match(/^#tree=([A-Za-z0-9_-]+)$/);
   if (!match) return null;
-  const bytes = await pipe(fromBase64Url(match[1]), new DecompressionStream('deflate-raw'));
+  const bytes = await inflateCapped(fromBase64Url(match[1]), MAX_SHARED_BYTES);
   return new TextDecoder().decode(bytes);
 }
