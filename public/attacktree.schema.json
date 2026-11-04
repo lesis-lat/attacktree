@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "attacktree.schema.json",
+  "title": "attacktree tree",
+  "description": "An attack tree or decision tree in the attacktree / Deciduous YAML format. Docs: /llms-full.txt",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "description": "Shown in the editor and on exports." },
+    "facts": { "$ref": "#/$defs/section", "description": "True statements about the system that are neither attacks nor defenses." },
+    "attacks": { "$ref": "#/$defs/section", "description": "Actions the attacker takes." },
+    "mitigations": { "$ref": "#/$defs/section", "description": "Defenses that counter an attack." },
+    "goals": { "$ref": "#/$defs/section", "description": "What the attacker ultimately wants. Drawn at the bottom." },
+    "filter": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/id" },
+      "description": "Show only the paths that go through these nodes."
+    },
+    "positions": {
+      "type": "object",
+      "description": "Nodes placed by hand on the canvas: id -> [x, y]. Written by the editor.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "number" },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "theme": { "type": "string", "description": "Deciduous compatibility; ignored by attacktree." },
+    "legend": { "type": "boolean", "description": "Deciduous compatibility; ignored by attacktree." },
+    "dark": { "type": "boolean", "description": "Deciduous compatibility; ignored by attacktree." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[\\w][\\w.-]*$",
+      "description": "Unique across the whole tree. Prefer letters, digits, _ and -, starting with a letter. 'reality' is the implicit root."
+    },
+    "section": {
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "node": {
+      "type": "object",
+      "description": "The FIRST key is the node id and its value is the label (empty = derived from the id). The only other key is 'from'.",
+      "minProperties": 1,
+      "maxProperties": 2,
+      "properties": {
+        "from": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/edge" },
+          "description": "Ids this node comes from; arrows point from them to this node."
+        }
+      },
+      "additionalProperties": { "type": ["string", "null"] }
+    },
+    "edge": {
+      "oneOf": [
+        { "$ref": "#/$defs/id" },
+        {
+          "type": "object",
+          "description": "The FIRST key is the source id; its value is an optional label such as '#yolosec'. Flags follow as sibling keys.",
+          "minProperties": 1,
+          "properties": {
+            "backwards": { "type": "boolean", "description": "A mitigation sends the attacker back to this earlier step." },
+            "implemented": { "type": "boolean", "description": "false = planned, not in place yet." },
+            "ungrouped": { "type": "boolean", "description": "Deciduous compatibility; no effect." }
+          },
+          "additionalProperties": {
+            "anyOf": [
+              { "type": ["string", "null"] },
+              {
+                "type": "object",
+                "description": "Flags nested under the id are accepted too.",
+                "properties": {
+                  "label": { "type": "string" },
+                  "backwards": { "type": "boolean" },
+                  "implemented": { "type": "boolean" },
+                  "ungrouped": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

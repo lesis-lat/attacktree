@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>attacktree docs: attack trees and decision trees, by LESIS</title>
+    <meta name="description" content="How to model attack trees and decision trees with attacktree: concepts, the YAML format, modeling patterns, a method, and the canvas and editor reference." />
+    <meta name="author" content="LESIS" />
+    <meta property="og:title" content="attacktree docs" />
+    <meta property="og:description" content="Model attack trees and decision trees in your browser. Built by LESIS." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="text/markdown" title="Full documentation for language models" href="%BASE_URL%llms-full.txt" />
+    <script>
+      try {
+        var p = localStorage.getItem('attacktree:theme');
+        var dark = p === 'dark' || ((!p || p === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/docs/main.tsx"></script>
+  </body>
+</html>

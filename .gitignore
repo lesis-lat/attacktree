@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output (vite build -> dist/) and caches
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+*.local
+
+# Tests and browser checks
+coverage/
+test-results/
+playwright-report/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files: never commit secrets
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local Claude Code settings (shared settings in .claude/settings.json stay tracked)
+.claude/settings.local.json
+
+# Attack trees exported or saved while testing (client models stay out of the repo)
+*.attacktree.yaml
+scratch/

@@ -1,0 +1,45 @@
+# attacktree
+
+> attacktree is a free, browser-based editor for attack trees and decision trees. You describe how an attacker (or a failure) could reach a goal in a small YAML format, or draw it on a canvas, and attacktree lays it out as a diagram. It is local-first: trees are saved in the browser and share links carry the whole tree in the URL fragment. Built and maintained by LESIS (https://lesis.lat), a security engineering team.
+
+The format is the Deciduous YAML format (https://www.deciduous.app/), extended with an optional `positions` section. Files written for Deciduous open unchanged.
+
+## Docs
+
+- [Full documentation](llms-full.txt): Markdown. Concepts, the complete YAML reference, modeling patterns, a step-by-step method, the canvas, editor and diagnostics reference, sharing and exporting, and an FAQ.
+- [Documentation (HTML)](docs/): the same content, with live diagrams.
+- [JSON Schema](attacktree.schema.json): the tree format as a JSON Schema (draft 2020-12).
+
+## Format in brief
+
+```yaml
+title: Account takeover
+facts:                      # true statements about the system
+- public_api: The login API is on the internet
+  from:
+  - reality                 # implicit root node
+attacks:                    # attacker actions
+- stuffing: Credential stuffing on /login
+  from:
+  - public_api: '#yolosec'  # edge label; '#yolosec' = nothing stops this step
+mitigations:                # defenses that counter an attack
+- rate_limit: Rate limiting and breached-password checks
+  from:
+  - stuffing:
+    implemented: false      # planned, not in place yet
+goals:                      # what the attacker ultimately wants
+- takeover: Take over a customer account
+  from:
+  - stuffing
+```
+
+- A node is a list item whose first key is its id (unique, `[A-Za-z_][\w-]*`) and whose value is its label.
+- `from` lists the ids the node comes from. Arrows point from them to it.
+- An edge entry is an id, or a map whose first key is the id, followed by flags at the same indentation: `backwards: true` (a mitigation sends the attacker back to an earlier step) and `implemented: false` (planned).
+- `filter: [ids]` shows only the paths through those nodes. `positions: {id: [x, y]}` stores nodes placed by hand.
+- Model in a rhythm: an attack, the mitigation that counters it, then the attacker's next move because of that mitigation.
+
+## Optional
+
+- [Deciduous](https://www.deciduous.app/): the original tool by Ryan Petrich and Kelly Shortridge, where this format comes from.
+- [LESIS](https://lesis.lat): the team behind attacktree. Security assessments, security consultancy, due diligence and custom tools.

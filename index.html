@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>attacktree: attack trees in your browser, by LESIS</title>
+    <meta name="description" content="Free, local-first editor for attack trees and decision trees. Write YAML or draw on a canvas; share with a link. Built by LESIS." />
+    <meta name="author" content="LESIS" />
+    <meta property="og:title" content="attacktree" />
+    <meta property="og:description" content="Model attack trees and decision trees in your browser. Built by LESIS." />
+    <link rel="alternate" type="text/plain" title="About this tool, for language models" href="%BASE_URL%llms.txt" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // pick the theme before first paint to avoid a flash
+      try {
+        var p = localStorage.getItem('attacktree:theme');
+        var dark = p === 'dark' || ((!p || p === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

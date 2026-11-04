@@ -1,0 +1,156 @@
+/* ---------------------------------------------------------------------------
+   Tokens
+--------------------------------------------------------------------------- */
+:root {
+  /* the LESIS type system */
+  --font-ui: 'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f3f3f1;
+  --surface-raised: #ffffff;
+  --border: #e6e5e1;
+  --border-strong: #d6d5d0;
+  --text: #1a1b1f;
+  --text-2: #55575f;
+  --text-3: #85878f;
+  --text-4: #b4b5ba;
+  --accent: #5847e0;
+  --accent-hover: #4a39d0;
+  --accent-solid: #5847e0;
+  --accent-solid-hover: #4a39d0;
+  --accent-soft: rgba(88, 71, 224, 0.1);
+  --accent-ring: rgba(88, 71, 224, 0.35);
+  --danger: #d33a4f;
+  --danger-soft: rgba(211, 58, 79, 0.09);
+  --warning: #b7791f;
+  --success: #1f9d6b;
+
+  --shadow-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
+  --shadow-md: 0 1px 2px rgba(20, 20, 30, 0.04), 0 4px 14px rgba(20, 20, 30, 0.07);
+  --shadow-lg: 0 2px 6px rgba(20, 20, 30, 0.05), 0 14px 40px rgba(20, 20, 30, 0.12);
+
+  --canvas-bg: #fbfbfa;
+  --canvas-dot: #dddcd7;
+
+  --edge: #a4a6ae;
+  --edge-strong: #3f424b;
+  --edge-backwards: #6b7bf0;
+  --edge-label-bg: #ffffff;
+  --edge-tag-bg: #ffe4ec;
+  --edge-tag-text: #c0234f;
+
+  --reality-bg: #1c1d22;
+  --reality-border: #1c1d22;
+  --reality-text: #ffffff;
+  --reality-tag: #ffffff;
+  --fact-bg: #f1f2f5;
+  --fact-border: #d9dce3;
+  --fact-text: #22252b;
+  --fact-tag: #646b7a;
+  --attack-bg: #fff1f5;
+  --attack-border: #f5c3d1;
+  --attack-text: #2a1a20;
+  --attack-tag: #d1305a;
+  --mitigation-bg: #eef5ff;
+  --mitigation-border: #bfd5f5;
+  --mitigation-text: #15233a;
+  --mitigation-tag: #2563c9;
+  --goal-bg: #4f23b8;
+  --goal-border: #4f23b8;
+  --goal-text: #ffffff;
+  --goal-tag: rgba(255, 255, 255, 0.72);
+  --goal-accent: #5b2bd0;
+  --ghost-bg: transparent;
+  --ghost-border: #b9bbc2;
+  --ghost-text: #6c6f78;
+  --ghost-tag: #a0a2a9;
+
+  --syn-key: #3b4bc4;
+  --syn-string: #1f2228;
+  --syn-comment: #9a9ca3;
+  --syn-atom: #b45309;
+  --syn-punct: #9a9ca3;
+  --syn-meta: #8b5cf6;
+  --editor-active-line: rgba(20, 20, 40, 0.028);
+  --editor-selection: rgba(88, 71, 224, 0.16);
+  --editor-match: rgba(88, 71, 224, 0.1);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0d0e11;
+  --surface: #141519;
+  --surface-2: #1a1b20;
+  --surface-raised: #1c1d23;
+  --border: #26272e;
+  --border-strong: #33343c;
+  --text: #ececef;
+  --text-2: #a5a7af;
+  --text-3: #74767f;
+  --text-4: #4a4c54;
+  --accent: #8d7dff;
+  --accent-hover: #a194ff;
+  --accent-solid: #6c5cf0;
+  --accent-solid-hover: #7b6df5;
+  --accent-soft: rgba(141, 125, 255, 0.14);
+  --accent-ring: rgba(141, 125, 255, 0.45);
+  --danger: #ff6b7f;
+  --danger-soft: rgba(255, 107, 127, 0.12);
+  --warning: #f2b45a;
+  --success: #3ccf91;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.35), 0 18px 48px rgba(0, 0, 0, 0.5);
+
+  --canvas-bg: #101115;
+  --canvas-dot: #24252c;
+
+  --edge: #50535d;
+  --edge-strong: #c9cbd2;
+  --edge-backwards: #8f9cff;
+  --edge-label-bg: #1c1d23;
+  --edge-tag-bg: #3a1823;
+  --edge-tag-text: #ff8aa8;
+
+  --reality-bg: #ececef;
+  --reality-border: #ececef;
+  --reality-text: #111216;
+  --reality-tag: #111216;
+  --fact-bg: #1d1f25;
+  --fact-border: #31343d;
+  --fact-text: #e4e5e9;
+  --fact-tag: #9aa1ae;
+  --attack-bg: #2a161e;
+  --attack-border: #57273a;
+  --attack-text: #f8e7ec;
+  --attack-tag: #ff7399;
+  --mitigation-bg: #131e2d;
+  --mitigation-border: #24405f;
+  --mitigation-text: #e2ebf8;
+  --mitigation-tag: #6aa6ff;
+  --goal-bg: #6a3df0;
+  --goal-border: #6a3df0;
+  --goal-text: #ffffff;
+  --goal-tag: rgba(255, 255, 255, 0.75);
+  --goal-accent: #b39bff;
+  --ghost-bg: transparent;
+  --ghost-border: #4c4f59;
+  --ghost-text: #8a8d96;
+  --ghost-tag: #6a6d76;
+
+  --syn-key: #9aa8ff;
+  --syn-string: #e4e5e9;
+  --syn-comment: #62646d;
+  --syn-atom: #f2b45a;
+  --syn-punct: #62646d;
+  --syn-meta: #c4a7ff;
+  --editor-active-line: rgba(255, 255, 255, 0.025);
+  --editor-selection: rgba(141, 125, 255, 0.24);
+  --editor-match: rgba(141, 125, 255, 0.14);
+
+  color-scheme: dark;
+}
