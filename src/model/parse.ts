@@ -297,8 +297,8 @@ export function parseTree(text: string): Tree {
   // Drop exact duplicates so the graph stays clean, but say so.
   const seen = new Set<string>();
   const edges: TreeEdge[] = [];
+  // every target is a declared node: its "from" is only read after it is declared
   for (const edge of rawEdges) {
-    if (!nodes.has(edge.target)) continue;
     const key = `${edge.source}->${edge.target}:${edge.backwards}`;
     if (seen.has(key)) {
       report('warning', edge.sourceRange, `"${edge.target}" already comes from "${edge.source}"`);

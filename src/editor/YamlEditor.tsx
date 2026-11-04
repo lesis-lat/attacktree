@@ -126,7 +126,6 @@ function idCompletions(treeRef: RefObject<Tree>) {
     const before = line.text.slice(0, ctx.pos - line.from);
     const item = before.match(/^(\s*)-\s+([\w-]*)$/);
     if (!item) return null;
-    if (!ctx.explicit && item[2] === '' && !ctx.matchBefore(/-\s+$/)) return null;
     const indent = item[1].length;
     let parent: string | null = null;
     for (let n = line.number - 1; n >= 1; n--) {
@@ -262,8 +261,8 @@ export function YamlEditor({ docId, value, tree, onChange, onCursor, reveal, api
 
   // Canvas edits arrive as a new value: apply the smallest change so the cursor stays put.
   useEffect(() => {
-    const v = view.current;
-    if (!v) return;
+    // created by the mount effect above, which React runs first
+    const v = view.current!;
     const current = v.state.doc.toString();
     if (current !== value) {
       let start = 0;

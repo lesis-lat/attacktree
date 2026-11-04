@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import { type ReactFlowProps, ReactFlowProvider, type FinalConnectionState } from '@xyflow/react';
 import { createElement } from 'react';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, type Mock, onTestFinished, vi } from 'vitest';
 import { computeLayout, type Layout } from '../layout/layout';
 import { withPins } from '../layout/pins';
 import { parseTree } from '../model/parse';
@@ -128,16 +128,18 @@ goals:
   - reality
 `;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- handler mocks stand in for typed callbacks
+type AnyFn = (...args: any[]) => any;
 type Handlers = {
-  onSelect: ReturnType<typeof vi.fn>;
-  onConnect: ReturnType<typeof vi.fn>;
-  onCreateFrom: ReturnType<typeof vi.fn>;
-  onAdd: ReturnType<typeof vi.fn>;
-  onDelete: ReturnType<typeof vi.fn>;
-  onEditLabel: ReturnType<typeof vi.fn>;
-  onMove: ReturnType<typeof vi.fn>;
-  onResetLayout: ReturnType<typeof vi.fn>;
-  onReconnect: ReturnType<typeof vi.fn>;
+  onSelect: Mock<AnyFn>;
+  onConnect: Mock<AnyFn>;
+  onCreateFrom: Mock<AnyFn>;
+  onAdd: Mock<AnyFn>;
+  onDelete: Mock<AnyFn>;
+  onEditLabel: Mock<AnyFn>;
+  onMove: Mock<AnyFn>;
+  onResetLayout: Mock<AnyFn>;
+  onReconnect: Mock<AnyFn>;
 };
 
 interface Options {
@@ -157,15 +159,15 @@ async function setup(options: Options = {}) {
   const tree = options.tree ?? parseTree(TEXT);
   const layout = options.layout === undefined ? await layoutOf(tree) : options.layout;
   const handlers: Handlers = {
-    onSelect: vi.fn(),
-    onConnect: vi.fn(),
-    onCreateFrom: vi.fn(),
-    onAdd: vi.fn(),
-    onDelete: vi.fn(),
-    onEditLabel: vi.fn(),
-    onMove: vi.fn(),
-    onResetLayout: vi.fn(),
-    onReconnect: vi.fn(),
+    onSelect: vi.fn<AnyFn>(),
+    onConnect: vi.fn<AnyFn>(),
+    onCreateFrom: vi.fn<AnyFn>(),
+    onAdd: vi.fn<AnyFn>(),
+    onDelete: vi.fn<AnyFn>(),
+    onEditLabel: vi.fn<AnyFn>(),
+    onMove: vi.fn<AnyFn>(),
+    onResetLayout: vi.fn<AnyFn>(),
+    onReconnect: vi.fn<AnyFn>(),
   };
   let current: Required<Options> = {
     tree,
@@ -211,6 +213,19 @@ const edgeEl = (id: string) => document.querySelector(`[data-id="${id}"].react-f
 const props = () => rf.props as Required<ReactFlowProps>;
 
 describe('rendering', () => {
+  it('draws nothing for an edge that arrives without its data', async () => {
+    await setup();
+    const Routed = (props().edgeTypes as Record<string, React.ComponentType<Record<string, unknown>>>).routed;
+    const { container } = render(
+      <ReactFlowProvider>
+        <svg>
+          <Routed id="stray" source="phish" target="win" selected={false} />
+        </svg>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelector('svg')!.childElementCount).toBe(0);
+  });
+
   it('draws every placed node as a card at its layout position', async () => {
     const { tree, layout } = await setup();
     for (const n of tree.nodes) {

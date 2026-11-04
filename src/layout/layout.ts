@@ -75,7 +75,7 @@ export function layoutKey(tree: Tree, visible: Set<string> | null): string {
 }
 
 function roundedPath(points: ElkPoint[], radius = 10): string {
-  if (points.length < 2) return '';
+  // ELK always gives a start and an end point
   let d = `M${points[0].x},${points[0].y}`;
   for (let i = 1; i < points.length - 1; i++) {
     const [a, b, c] = [points[i - 1], points[i], points[i + 1]];

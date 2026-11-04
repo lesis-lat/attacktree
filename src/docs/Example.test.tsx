@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { Blob as NodeBlob } from 'node:buffer';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

@@ -40,6 +40,7 @@ export function connector(s: Rect, t: Rect, backwards: boolean): { path: string;
   return { path, label: { x, y } };
 }
 
+/** only called with at least one pinned node, so the box is never empty */
 function boundsOf(nodes: Iterable<PlacedNode>, edges: Iterable<PlacedEdge>): Bounds {
   let minX = Infinity;
   let minY = Infinity;
@@ -53,7 +54,6 @@ function boundsOf(nodes: Iterable<PlacedNode>, edges: Iterable<PlacedEdge>): Bou
   };
   for (const n of nodes) grow(n.x, n.y, n.width, n.height);
   for (const e of edges) if (e.label) grow(e.label.x - e.label.width / 2, e.label.y - e.label.height / 2, e.label.width, e.label.height);
-  if (minX === Infinity) return { x: 0, y: 0, width: 0, height: 0 };
   return { x: minX - PADDING, y: minY - PADDING, width: maxX - minX + PADDING * 2, height: maxY - minY + PADDING * 2 };
 }
 
