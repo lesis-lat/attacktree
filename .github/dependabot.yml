@@ -1,0 +1,32 @@
+# Dependency updates. Security fixes open on their own as soon as an advisory is
+# published (turn on "Dependabot security updates" in Settings > Code security);
+# this file adds the weekly version updates. Every PR runs ci.yml and CodeQL.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 10
+    # minor and patch bumps in one PR per group; majors come one by one, since they can break things
+    groups:
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      actions:
+        patterns: ["*"]

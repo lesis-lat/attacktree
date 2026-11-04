@@ -1,0 +1,27 @@
+# Checks every pull request (Dependabot's included) before it reaches main.
+# main itself is checked by pages.yml, which runs the same steps before deploying.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx tsc --noEmit && npx tsc -p tsconfig.node.json
+      - run: npm run coverage
+      - run: npm run build
