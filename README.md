@@ -111,7 +111,7 @@ A suíte cobre o modelo (parser e mutações, com testes de propriedade sobre v�
 
 ## Publicação (GitHub Pages)
 
-Cada push em `main` roda os testes, gera o build e publica o site pelo workflow `.github/workflows/pages.yml`. O site fica em `https://lesis-lat.github.io/attacktree/`, e a documentação em `/attacktree/docs/`.
+Cada push em `main` roda os testes, gera o build e publica o site pelo workflow `.github/workflows/pages.yml`. O site fica em `https://attacktree.lesis.lat/` (domínio em `public/CNAME`, DNS na Cloudflare com CNAME para `lesis-lat.github.io` em modo DNS only), e a documentação em `/docs/`.
 
 - Os caminhos do app seguem o `base` do Vite. O workflow passa `BASE_PATH` com o caminho que o GitHub Pages informa, então um domínio próprio funciona sem mudar o código.
 - Para testar localmente com o mesmo caminho: `BASE_PATH=/attacktree/ npm run build && BASE_PATH=/attacktree/ npm run preview`.
