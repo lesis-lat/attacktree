@@ -21,9 +21,12 @@ describe('Legend', () => {
     expect(localStorage.getItem(KEY)).toBe('open');
     for (const kind of ['Reality', 'Fact', 'Attack', 'Mitigation', 'Goal']) expect(screen.getByText(kind)).toBeInTheDocument();
     expect(container.querySelector('.legend-kinds .kind-mitigation')).toHaveTextContent('Mitigation');
-    for (const text of ['Leads to', 'Forces the attacker back up', 'Not implemented yet', '#yolosec', 'No mitigation in place']) {
+    for (const text of ['Leads to', 'Forces the attacker back up', 'Not implemented yet', 'Open path: no defense on the way', 'Nothing counters this attack']) {
       expect(screen.getByText(text)).toBeInTheDocument();
     }
+    expect(screen.queryByText('#yolosec')).toBeNull();
+    expect(container.querySelector('.legend-line.is-open')).not.toBeNull();
+    expect(container.querySelector('.legend-badge .tree-node-badge')).toHaveTextContent('No defense');
     expect(container.querySelector('.legend-line.is-backwards')).not.toBeNull();
     expect(container.querySelector('.legend-line.is-unimplemented')).not.toBeNull();
 

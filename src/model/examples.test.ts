@@ -10,7 +10,9 @@ describe('bundled trees', () => {
     expect(tree.title).toBe('Ship a malicious release through CI/CD');
     expect(new Set(tree.nodes.map((n) => n.kind))).toEqual(new Set(['reality', 'fact', 'attack', 'mitigation', 'goal']));
     expect(tree.nodes.every((n) => !isGhost(n))).toBe(true);
-    expect(tree.edges.some((e) => e.label === '#yolosec')).toBe(true);
+    expect(tree.edges.some((e) => e.label)).toBe(true);
+    // the example teaches the gaps the app finds by itself, so it needs no '#yolosec' labels
+    expect(tree.edges.some((e) => e.label?.startsWith('#'))).toBe(false);
     expect(tree.edges.some((e) => e.backwards)).toBe(true);
     expect(tree.edges.some((e) => !e.implemented)).toBe(true);
     expect(tree.positions).toEqual({});

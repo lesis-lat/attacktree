@@ -193,7 +193,15 @@ function keepComments(old: Node, next: Node) {
 
 function dropEmptyFrom(item: YAMLMap) {
   const seq = fromSeq(item);
-  if (seq && seq.items.length === 0) item.delete('from');
+  if (!seq || seq.items.length > 0) return;
+  const pair = item.items.find((p) => keyOf(p.key) === 'from')!;
+  // "from: # why" goes away with the list; its comment stays, on the node's own line
+  // the yaml library gives every key and value a node, an empty label included
+  const notes = [pair.key as Node, seq].flatMap((n) => [n.commentBefore, n.comment]).filter((c): c is string => !!c);
+  item.delete('from');
+  if (notes.length === 0) return;
+  const label = item.items[0].value as Node;
+  label.comment = [label.comment, ...notes].filter(Boolean).join('\n');
 }
 
 export function slugify(label: string): string {
@@ -283,6 +291,55 @@ export function updateEdge(text: string, target: string, fromIndex: number, patc
   const next = makeEntry(doc, source, props) as Node;
   keepComments(entry as Node, next);
   seq.items[fromIndex] = next;
+  return dump(doc, text);
+}
+
+export interface EdgeEnds {
+  source: string;
+  target: string;
+  /** whether the moved connection now points back up the tree */
+  backwards: boolean;
+}
+
+/**
+ * Point an existing connection at other nodes, keeping its label, flags and comments.
+ * Moving the target moves the entry from one node's "from" list to the other's.
+ */
+export function reconnectEdge(text: string, target: string, fromIndex: number, to: EdgeEnds): string {
+  if (to.source === to.target) throw new MutationError('A node cannot come from itself');
+  if (to.target === 'reality') throw new MutationError('Nothing can lead into Reality');
+  const doc = load(text);
+  const { item } = mustLocate(doc, target);
+  const seq = fromSeq(item);
+  const entry = Number.isInteger(fromIndex) && fromIndex >= 0 ? seq?.items[fromIndex] : undefined;
+  const source = entrySource(entry);
+  if (!seq || !source) throw new MutationError('That connection no longer exists');
+  const props = entryProps(entry);
+  if (source === to.source && target === to.target && props.backwards === to.backwards) return text;
+
+  const dest = to.target === target ? item : mustLocate(doc, to.target).item;
+  let destSeq = fromSeq(dest);
+  for (const [i, other] of (destSeq?.items ?? []).entries()) {
+    if (dest === item && i === fromIndex) continue;
+    if (entrySource(other) === to.source && entryProps(other).backwards === to.backwards) {
+      throw new MutationError(`"${to.target}" already comes from "${to.source}"`);
+    }
+  }
+
+  const next = makeEntry(doc, to.source, { ...props, backwards: to.backwards }) as Node;
+  keepComments(entry as Node, next);
+  if (dest === item) {
+    seq.items[fromIndex] = next;
+  } else {
+    seq.items.splice(fromIndex, 1);
+    dropEmptyFrom(item);
+    if (!destSeq) {
+      destSeq = new YAMLSeq();
+      dest.set('from', destSeq);
+    }
+    destSeq.flow = false;
+    destSeq.items.push(next);
+  }
   return dump(doc, text);
 }
 

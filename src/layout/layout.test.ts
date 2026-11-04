@@ -131,8 +131,8 @@ describe('layoutKey', () => {
   it('ignores what does not change geometry', () => {
     expect(key(`# a comment\n${READING}`)).toBe(base);
     expect(key(READING.replace('title: Reading a tree', 'title: Another title'))).toBe(base);
-    // implemented: false only changes the dash pattern
-    expect(key(READING.replace('  - stuffing\ngoals', '  - stuffing:\n    implemented: false\ngoals'))).toBe(base);
+    // implemented: false on a step that was already blocked only changes the dash pattern
+    expect(key(READING.replace('  - stuffing\n  - buy_session', '  - stuffing:\n    implemented: false\n  - buy_session'))).toBe(base);
     // positions are applied on top of the layout, they never trigger a new one
     expect(key(`${READING}positions:\n  stuffing: [10, 20]\n`)).toBe(base);
     expect(key(`${READING}filter:\n- takeover\n`)).toBe(base);
@@ -146,6 +146,8 @@ describe('layoutKey', () => {
       READING.replace("'then what?'", "'and then?'"),
       READING.replace("  - rate_limit: 'then what?'", '  - rate_limit'),
       READING.replace('  - stuffing\ngoals', '  - stuffing:\n    backwards: true\ngoals'),
+      // planning the only mitigation leaves the attack with a "No defense" badge: a wider card
+      READING.replace('  - stuffing\ngoals', '  - stuffing:\n    implemented: false\ngoals'),
       READING.replace('  - buy_session\n', '  - buy_session\n  - public_api\n'),
       READING.replace('- buy_session: Buy', '- buy_token: Buy').replace('  - buy_session\n', '  - buy_token\n'),
       `${READING}- other: Another goal\n  from:\n  - reality\n`,

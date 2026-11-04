@@ -7,7 +7,7 @@ facts:
   - reality
 - self_hosted_runners: Self-hosted runners hold cloud credentials
   from:
-  - reality: '#yolosec'
+  - reality
 
 attacks:
 - phish_maintainer: Phish a maintainer's password
@@ -30,7 +30,7 @@ attacks:
     backwards: true
 - pwn_request: Workflow runs fork code with secrets
   from:
-  - malicious_pr: '#yolosec'
+  - malicious_pr: via pull_request_target
 - dump_runner_creds: Dump credentials from the runner
   from:
   - pwn_request
@@ -61,7 +61,8 @@ mitigations:
     implemented: false
 - ephemeral_runners: Ephemeral, isolated runners
   from:
-  - dump_runner_creds
+  - dump_runner_creds:
+    implemented: false
 - lockfile_pinning: Lockfiles with hash pinning
   from:
   - poison_dependency

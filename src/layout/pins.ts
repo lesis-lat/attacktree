@@ -79,3 +79,10 @@ export function withPins(base: Layout, tree: Tree, pins: Record<string, Point>):
 
   return { ...base, nodes, edges, bounds: boundsOf(nodes.values(), edges.values()) };
 }
+
+/** Where a drawn path starts and ends: the source and target ends of an arrow. */
+export function pathEnds(d: string): { start: Point; end: Point } | null {
+  const n = d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi)?.map(Number);
+  if (!n || n.length < 4) return null;
+  return { start: { x: n[0], y: n[1] }, end: { x: n[n.length - 2], y: n[n.length - 1] } };
+}

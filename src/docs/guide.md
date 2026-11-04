@@ -113,7 +113,7 @@ A `from` entry is usually just an id. To add a label or a flag, write it as a sm
 ```yaml
 from:
 - reality                    # plain connection
-- leaked_keys: '#yolosec'    # connection with a label
+- leaked_keys: via a public gist    # connection with a label
 - code_review:              # a map: the id first, flags as siblings
   backwards: true            # see "Backwards edges"
 - dns_filtering:
@@ -122,7 +122,7 @@ from:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| *(label)* | none | Text drawn on the arrow. `'#yolosec'` is the usual one. Quote anything that starts with `#`, or YAML reads it as a comment. |
+| *(label)* | none | Text drawn on the arrow, such as how the step happens. Quote anything that starts with `#`, or YAML reads it as a comment. |
 | `backwards` | `false` | The arrow points back up the tree: a mitigation sends the attacker back to an earlier step. Drawn dotted and blue. |
 | `implemented` | `true` | `false` means the connection isn't real yet, usually a planned mitigation. Drawn dashed. |
 | `ungrouped` | `false` | Accepted for Deciduous compatibility. It has no visual effect in attacktree. |
@@ -191,25 +191,42 @@ A JSON Schema for the format is published at [`/attacktree.schema.json`](/attack
 
 The core pattern alternates. An attack, the mitigation that counters it, then the attack the adversary tries **because** of that mitigation. Ask "and then what?" after every mitigation. A branch ends when you can't think of a next move, or when it reaches a goal.
 
-### #yolosec: nothing in the way
+### Gaps: no defense, and open paths
 
-Label a connection `'#yolosec'` when nothing stops that step: no mitigation, or a "worst practice" in place. These are usually the first things to fix, and the label makes them easy to find when you review the tree.
+You don't mark the weak spots yourself: attacktree reads them from the tree and shows them on the canvas, in exports and in the inspector.
+
+- **No defense** (a red badge on an attack): no mitigation that is in place comes from that attack. A mitigation marked `implemented: false` doesn't count yet.
+- **Open path** (a red badge on a goal, and red arrows): the attacker can get from the start to that goal without beating any defense. A path may go through a defended attack only by way of its mitigation, which is the attacker hitting the defense and trying something else. It never goes straight on past it.
+
+Open paths are usually the first things to fix. The cheapest fix is often a mitigation on the one attack that every red path goes through.
 
 ```yaml example
 title: The cheapest path
 facts:
 - public_backups: Backup bucket is world-readable
   from:
-  - reality: '#yolosec'
+  - reality
 attacks:
 - list_bucket: List and download the backups
   from:
-  - public_backups: '#yolosec'
+  - public_backups
+- guess_keys: Guess the access keys
+  from:
+  - reality
+mitigations:
+- strong_keys: Long random keys, rotated
+  from:
+  - guess_keys
 goals:
 - data_leak: Customer data leaks
   from:
   - list_bucket
+  - guess_keys
 ```
+
+Here nothing stops the attacker from listing the bucket, so the leak is an open path. Guessing the keys is countered, so that way is not.
+
+Facts are starting points, so connect a fact to the first step it enables: a fact linked to a later step makes that step reachable straight from the start. Planned defenses show the gap that remains until they ship. Backwards connections are never steps of a path. Gaps are worked out on the whole tree, so a `filter` never hides a defense.
 
 ### Backwards edges: back to the drawing board
 
@@ -242,7 +259,7 @@ On the canvas, connecting a node to one of its own ancestors creates a backwards
 
 ### Planned mitigations
 
-Mark a mitigation that you intend to have, but don't have yet, with `implemented: false` on the connection that leads to it. It is drawn dashed, so the tree shows the present and the plan at once.
+Mark a mitigation that you intend to have, but don't have yet, with `implemented: false` on the connection that leads to it. It is drawn dashed, so the tree shows the present and the plan at once. Until it is in place, the attack it counters stays marked **No defense**.
 
 ```yaml example
 title: Today and tomorrow
@@ -268,10 +285,10 @@ A tree can have more than one goal. Shared early steps (recon, initial access) u
 ## Building a tree: a method
 
 1. **Name the asset and the goal.** What would hurt? "Customer recordings leak", "a malicious release reaches users". Put it under `goals`.
-2. **Start from reality, with the cheapest path.** What would a low-effort attacker try first? Public buckets, default credentials and leaked keys come before zero-days. Mark undefended steps `#yolosec`.
+2. **Start from reality, with the cheapest path.** What would a low-effort attacker try first? Public buckets, default credentials and leaked keys come before zero-days.
 3. **Add what you have.** For each attack, add the mitigations that exist today. Add the ones you only plan with `implemented: false`.
 4. **Ask "and then what?"** For every mitigation, add the attacker's next move. Use `backwards` when a mitigation pushes them back up the tree.
-5. **Look for open paths.** Click each goal. Everything lit up is a way to get there. Paths with no mitigation, and `#yolosec` labels, are your priorities.
+5. **Look for open paths.** Red arrows and the **Open path** badge show goals the attacker reaches without beating any defense, and **No defense** marks the attacks on the way. Those are your priorities. Click a goal to light up every way to get there.
 6. **Find leverage.** Click a mitigation to see how many paths go through it. A mitigation early in the tree that many paths cross is worth more than one at the edge.
 7. **Test your assumptions.** Each mitigation is a hypothesis. Verify the important ones with tests, red-team exercises or security chaos experiments, and update the tree with the results.
 8. **Keep it alive.** Revisit the tree after incidents, architecture changes and new findings. An old tree describes a system that no longer exists.
@@ -289,7 +306,8 @@ Trees work best when they are built together. A 45-minute session with the peopl
 | Add a node | **Add** in the toolbar. If a node is selected, the new node comes from it. Otherwise a fact or an attack comes from Reality, and a mitigation or a goal starts unconnected. |
 | Add the next step | Drag from the handle under a node and drop on empty space. After an attack comes a mitigation, and after anything else comes an attack. |
 | Connect two nodes | Drag from the handle under a node and drop it anywhere on the other node. |
-| Edit a connection | Click the arrow or its label. The inspector toggles `#yolosec`, backwards and not implemented. |
+| Edit a connection | Click the arrow or its label. The inspector edits its label and toggles backwards and not implemented. |
+| Move a connection | Select the arrow, then drag the dot at either end onto another card. Or pick **From** and **To** in the inspector. The YAML follows, and the label, flags and comments stay with the connection. |
 | Move a node | Drag it. The position is saved in the YAML, and its arrows follow it. |
 | Back to automatic layout | **Auto-arrange** in the bottom-right corner, or **Auto** next to "Placed by hand" in the inspector. |
 | Delete | Select, then press Delete or Backspace, or use the inspector button. Deleting a node removes every reference to it. |
@@ -336,7 +354,7 @@ Problems are underlined in the editor and counted in the status bar. Click the c
 
 The format is small and regular, which makes it a good fit for language models.
 
-- **Copy for AI** (in the top bar, and **Copy prompt for AI** in the menu next to the title) copies a ready-made prompt: the format rules, the conventions above and the current tree. Paste it into your assistant, then say what you want: "add the insider threat branch", "suggest mitigations for every #yolosec edge", "translate the labels into Portuguese".
+- **Copy for AI** (in the top bar, and **Copy prompt for AI** in the menu next to the title) copies a ready-made prompt: the format rules, the conventions above and the current tree. Paste it into your assistant, then say what you want: "add the insider threat branch", "suggest a mitigation for every attack marked No defense", "translate the labels into Portuguese".
 - **Pasting answers back:** paste the model's answer straight into the editor. Markdown code fences (```` ```yaml ````) are removed for you. **Import** removes them from files too.
 - **Machine-readable docs:** [`/llms.txt`](/llms.txt) and [`/llms-full.txt`](/llms-full.txt) describe the tool and the format in plain text, following the llms.txt convention, and [`/attacktree.schema.json`](/attacktree.schema.json) is the JSON Schema.
 
@@ -350,6 +368,7 @@ attacktree reads Deciduous YAML unchanged, and its own files stay readable by De
 - **Ignored on purpose:** `theme`, `legend` and `dark`. attacktree has its own light and dark themes, plus a legend on the canvas.
 - **Extension:** `positions`, for nodes placed by hand. Deciduous ignores it.
 - **Images:** SVG, PNG and DOT files exported by Deciduous can be imported, because they carry their source too.
+- **`#yolosec`:** Deciduous trees label undefended steps `'#yolosec'` by hand. attacktree keeps those labels as ordinary text and finds undefended attacks and open paths by itself (see [Gaps](#gaps-no-defense-and-open-paths)).
 - **Not included:** Graphviz DOT export and Gist import. A share link replaces the Gist workflow.
 
 ## Keyboard shortcuts

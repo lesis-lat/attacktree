@@ -9,7 +9,7 @@ FORMAT
 - The first key of a node is its id: letters, digits, "_" or "-", starting with a letter, unique across the whole tree. Its value is the label people read.
 - "from" lists the ids this node comes from. Arrows point from them to the node. "reality" is the implicit root, so use it for starting points.
 - A from entry is an id, or a map whose first key is the id. Flags go on the next lines, aligned with the id:
-    - leaked_keys: '#yolosec'      # label on the arrow; quote it, because # starts a YAML comment
+    - leaked_keys: via a public gist  # optional label on the arrow; quote it if it starts with #
     - code_review:
       backwards: true              # a mitigation sends the attacker back to this earlier step
     - dns_block:
@@ -20,7 +20,7 @@ FORMAT
 CONVENTIONS
 - Facts are true statements about the system. Attacks are attacker actions. Mitigations are defenses that counter an attack. Goals are what the attacker ultimately wants.
 - Model in a rhythm: an attack, the mitigation that counters it, then the attack the adversary tries next because of that mitigation.
-- Label a connection '#yolosec' when nothing stops that step.
+- Leave an attack without a mitigation when nothing counters it today. attacktree marks such attacks "No defense" and shows the open paths to goals by itself, so don't add '#yolosec' labels.
 - Keep labels short (under 60 characters), concrete, and specific to this system.
 
 REPLY

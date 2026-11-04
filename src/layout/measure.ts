@@ -1,4 +1,4 @@
-import type { TreeNode } from '../model/types';
+import { isGhost, KIND_LABEL, type TreeNode } from '../model/types';
 
 /** Keep in sync with .tree-node in styles.css — the canvas renders exactly these lines. */
 export const FONT_FAMILY = '"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
@@ -6,6 +6,9 @@ export const NODE_FONT = `500 13px ${FONT_FAMILY}`;
 /** .tree-node.kind-reality is bold */
 export const REALITY_FONT = `600 13px ${FONT_FAMILY}`;
 export const EDGE_LABEL_FONT = `600 11px ${FONT_FAMILY}`;
+/** .tree-node-tag: IBM Plex Mono 9px, uppercase, letter-spacing 0.09em */
+export const TAG_FONT = '600 9px "IBM Plex Mono", ui-monospace, monospace';
+const TAG_TRACKING = 9 * 0.09;
 
 export const METRICS = {
   maxText: 184,
@@ -22,6 +25,11 @@ export const METRICS = {
   labelLine: 14,
   labelPadX: 7,
   labelPadY: 3,
+  /** the tag row: dot, gap, kind, and the optional badge ("No defense") */
+  tagDot: 6,
+  tagGap: 5,
+  badgeGap: 8,
+  badgePadX: 5,
 } as const;
 
 export interface Box {
@@ -68,7 +76,21 @@ export function wrap(text: string, max: number, font: string): string[] {
 
 const widest = (lines: string[], font: string) => Math.max(0, ...lines.map((l) => textWidth(l, font)));
 
-export function measureNode(node: TreeNode): Box {
+/** width of uppercase tag text as the canvas draws it (letter-spacing included) */
+export function tagWidth(text: string): number {
+  const upper = text.toUpperCase();
+  return textWidth(upper, TAG_FONT) + upper.length * TAG_TRACKING;
+}
+
+/** the row above the label: "• ATTACK", plus a badge such as "NO DEFENSE" */
+function tagRowWidth(node: TreeNode, badge: string | null): number {
+  const m = METRICS;
+  const kind = isGhost(node) ? 'Undeclared' : KIND_LABEL[node.kind];
+  const base = m.tagDot + m.tagGap + tagWidth(kind);
+  return badge ? base + m.badgeGap + tagWidth(badge) + m.badgePadX * 2 : base;
+}
+
+export function measureNode(node: TreeNode, badge: string | null = null): Box {
   const m = METRICS;
   const font = node.kind === 'reality' ? REALITY_FONT : NODE_FONT;
   const lines = wrap(node.label, m.maxText, font);
@@ -81,7 +103,7 @@ export function measureNode(node: TreeNode): Box {
     };
   }
   return {
-    width: Math.ceil(Math.max(m.minWidth, text + m.padX * 2)),
+    width: Math.ceil(Math.max(m.minWidth, text + m.padX * 2, tagRowWidth(node, badge) + m.padX * 2 + 2)),
     height: m.padTop + m.tag + m.gap + lines.length * m.line + m.padBottom,
     lines,
   };

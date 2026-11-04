@@ -1,5 +1,6 @@
-import { ArrowRight, CornerLeftUp, Hash, Pin, Trash2, X } from 'lucide-react';
-import { type RefObject, useEffect, useState } from 'react';
+import { ArrowRight, CornerLeftUp, Pin, ShieldAlert, Trash2, X } from 'lucide-react';
+import { type RefObject, useEffect, useMemo, useState } from 'react';
+import { BADGES, badgeOf, defenseGaps } from '../model/analysis';
 import { type DeclaredKind, isGhost, KIND_LABEL, type Tree, type TreeEdge, type TreeNode } from '../model/types';
 import { cx } from '../ui/cx';
 import type { Selection } from './TreeCanvas';
@@ -16,6 +17,8 @@ export interface InspectorActions {
   deleteNode(id: string): void;
   updateEdge(edge: TreeEdge, patch: { label?: string; backwards?: boolean; implemented?: boolean }): void;
   deleteEdge(edge: TreeEdge): void;
+  /** point the connection at other nodes */
+  reconnect(edge: TreeEdge, to: { source: string; target: string }): void;
   close(): void;
 }
 
@@ -41,6 +44,7 @@ function NodePanel({ node, tree, actions, labelRef, readOnly }: { node: TreeNode
   const outgoing = tree.edges.filter((e) => e.source === node.id).length;
   const editable = node.declared && node.kind !== 'reality' && !readOnly;
   const nextKind: DeclaredKind = node.kind === 'attack' ? 'mitigation' : 'attack';
+  const badge = useMemo(() => badgeOf(node.id, defenseGaps(tree)), [node.id, tree]);
 
   const commitId = () => {
     const next = id.trim();
@@ -58,6 +62,16 @@ function NodePanel({ node, tree, actions, labelRef, readOnly }: { node: TreeNode
           <X size={15} />
         </button>
       </div>
+
+      {badge && (
+        <div className="inspector-gap" role="note">
+          <ShieldAlert size={15} aria-hidden />
+          <p>
+            <strong>{badge.label}.</strong> {badge.hint}
+            {badge === BADGES.undefended && !readOnly && ' Add a mitigation after it, or connect one that exists.'}
+          </p>
+        </div>
+      )}
 
       {editable && (
         <div className="segmented" role="radiogroup" aria-label="Kind">
@@ -162,11 +176,18 @@ function NodePanel({ node, tree, actions, labelRef, readOnly }: { node: TreeNode
   );
 }
 
+/** a node as a choice in a list: its label, with the id when another node reads the same */
+function optionLabel(node: TreeNode, tree: Tree): string {
+  if (isGhost(node)) return `Undeclared: ${node.id}`;
+  const twin = tree.nodes.some((n) => n !== node && n.label === node.label);
+  return twin ? `${node.label} (${node.id})` : node.label;
+}
+
 function EdgePanel({ edge, tree, actions, readOnly }: { edge: TreeEdge; tree: Tree; actions: InspectorActions; readOnly: boolean }) {
   const [label, setLabel] = useState(edge.label ?? '');
   useEffect(() => setLabel(edge.label ?? ''), [edge.id, edge.label]);
   const name = (id: string) => tree.nodes.find((n) => n.id === id)?.label ?? id;
-  const yolo = edge.label === '#yolosec';
+  const open = useMemo(() => defenseGaps(tree).openEdges.has(edge.id), [edge.id, tree]);
 
   return (
     <>
@@ -176,17 +197,55 @@ function EdgePanel({ edge, tree, actions, readOnly }: { edge: TreeEdge; tree: Tr
           <X size={15} />
         </button>
       </div>
-      <div className="edge-route">
-        <span>{name(edge.source)}</span>
-        <ArrowRight size={13} />
-        <span>{name(edge.target)}</span>
-      </div>
+      {readOnly ? (
+        <div className="edge-route">
+          <span>{name(edge.source)}</span>
+          <ArrowRight size={13} />
+          <span>{name(edge.target)}</span>
+        </div>
+      ) : (
+        <div className="edge-ends-fields">
+          <label className="field">
+            <span className="field-label">From</span>
+            <select value={edge.source} onChange={(e) => actions.reconnect(edge, { source: e.target.value, target: edge.target })}>
+              {tree.nodes
+                .filter((n) => n.id !== edge.target)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {optionLabel(n, tree)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">To</span>
+            <select value={edge.target} onChange={(e) => actions.reconnect(edge, { source: edge.source, target: e.target.value })}>
+              {tree.nodes
+                .filter((n) => n.declared && n.kind !== 'reality' && n.id !== edge.source)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {optionLabel(n, tree)}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {open && (
+        <div className="inspector-gap" role="note">
+          <ShieldAlert size={15} aria-hidden />
+          <p>
+            <strong>Open path.</strong> This step is on a way to a goal that meets no defense.
+          </p>
+        </div>
+      )}
 
       <label className="field">
         <span className="field-label">Label</span>
         <input
           value={label}
-          placeholder="e.g. #yolosec"
+          placeholder="e.g. via a phishing kit"
           disabled={readOnly}
           onChange={(e) => {
             setLabel(e.target.value);
@@ -197,17 +256,6 @@ function EdgePanel({ edge, tree, actions, readOnly }: { edge: TreeEdge; tree: Tr
 
       {!readOnly && (
         <div className="toggles">
-          <button
-            type="button"
-            className={cx('toggle', yolo && 'is-on')}
-            onClick={() => actions.updateEdge(edge, { label: yolo ? '' : '#yolosec' })}
-          >
-            <Hash size={14} />
-            <span>
-              <strong>#yolosec</strong>
-              <small>No mitigation, or a bad practice</small>
-            </span>
-          </button>
           <button
             type="button"
             className={cx('toggle', edge.backwards && 'is-on')}

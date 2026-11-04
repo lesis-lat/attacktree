@@ -267,7 +267,7 @@ describe('renderSvg', () => {
     } as unknown as CanvasRenderingContext2D);
     ex = await load();
     expect((await ex.renderSvg({ ...tree, title }, layout, null, { credit: false })).width).toBe(title.length * 10 + 48);
-    expect(fonts.at(-1)).toMatch(/^650 17px /);
+    expect(fonts.some((f) => /^650 17px /.test(f))).toBe(true);
     // a hidden title takes no room
     expect((await ex.renderSvg({ ...tree, title }, layout, null, { credit: false, showTitle: false })).width).toBe(192);
   });
@@ -391,27 +391,30 @@ describe('renderSvg', () => {
     const a = parse((await ex.renderSvg(tree, layout, null)).svg);
     const b = parse((await ex.renderSvg(tree, layout, null, { idPrefix: 'docs-3' })).svg);
     const ids = (d: Document) => [...d.querySelectorAll('marker')].map((m) => m.id);
-    expect(ids(a)).toEqual(['at-a', 'at-b']);
-    expect(ids(b)).toEqual(['docs-3-a', 'docs-3-b']);
+    expect(ids(a)).toEqual(['at-a', 'at-b', 'at-o']);
+    expect(ids(b)).toEqual(['docs-3-a', 'docs-3-b', 'docs-3-o']);
     // every reference points at a marker of the same diagram
     for (const [d, prefix] of [[a, 'at'], [b, 'docs-3']] as const) {
       for (const p of d.querySelectorAll('path[marker-end]')) {
-        expect(p.getAttribute('marker-end')).toMatch(new RegExp(`^url\\(#${prefix}-(a|b)\\)$`));
+        expect(p.getAttribute('marker-end')).toMatch(new RegExp(`^url\\(#${prefix}-(a|b|o)\\)$`));
       }
     }
   });
 
-  it('draws edges in their style: forward, backwards and planned', async () => {
+  it('draws edges in their style: open path, backwards, planned and plain', async () => {
     fakeTokens();
     const { tree, layout } = fixture();
     const doc = parse((await ex.renderSvg(tree, layout, null)).svg);
     const edge = (id: string) => doc.querySelector(`path[d="${layout.edges.get(id)!.path}"]`)!;
-    const forward = edge('win:0');
-    expect(forward.getAttribute('stroke')).toBe('edge');
-    expect(forward.getAttribute('stroke-width')).toBe('1.5');
-    expect(forward.getAttribute('stroke-dasharray')).toBeNull();
-    expect(forward.getAttribute('marker-end')).toBe('url(#at-a)');
-    expect(forward.getAttribute('fill')).toBe('none');
+    // MFA is only planned, so nothing stops "login": the way to "win" is an open path, in red
+    const open = edge('win:0');
+    expect(open.getAttribute('stroke')).toBe('danger');
+    expect(open.getAttribute('stroke-width')).toBe('2');
+    expect(open.getAttribute('stroke-dasharray')).toBeNull();
+    expect(open.getAttribute('marker-end')).toBe('url(#at-o)');
+    expect(open.getAttribute('fill')).toBe('none');
+    expect(doc.querySelector('#at-o path')!.getAttribute('fill')).toBe('danger');
+    for (const id of ['leak:0', 'login:0', 'win:1']) expect(edge(id).getAttribute('stroke')).toBe('danger');
 
     const back = edge('login:1');
     expect(back.getAttribute('stroke')).toBe('edge-backwards');
@@ -429,6 +432,37 @@ describe('renderSvg', () => {
     expect(doc.querySelector('#at-a path')!.getAttribute('fill')).toBe('edge');
     expect(doc.querySelector('#at-b path')!.getAttribute('fill')).toBe('edge-backwards');
     expect(doc.querySelector('rect')!.getAttribute('fill')).toBe('canvas-bg');
+
+    // with MFA in place the attack is defended: no open path, plain grey arrows
+    const defended = parseTree(SOURCE.replace('  - login:\n    implemented: false\n', '  - login\n'));
+    const plainDoc = parse((await ex.renderSvg(defended, layout, null)).svg);
+    const plain = plainDoc.querySelector(`path[d="${layout.edges.get('win:0')!.path}"]`)!;
+    expect(plain.getAttribute('stroke')).toBe('edge');
+    expect(plain.getAttribute('stroke-width')).toBe('1.5');
+    expect(plain.getAttribute('marker-end')).toBe('url(#at-a)');
+  });
+
+  it('writes "No defense" and "Open path" badges on the tag row, right-aligned', async () => {
+    fakeTokens();
+    const { tree, layout } = fixture();
+    const doc = parse((await ex.renderSvg(tree, layout, null)).svg);
+    expect(texts(doc)).toContain('NO DEFENSE');
+    expect(texts(doc)).toContain('OPEN PATH');
+    const badge = [...doc.querySelectorAll('text')].find((t) => t.textContent === 'NO DEFENSE')!;
+    expect(badge.getAttribute('fill')).toBe('on-danger');
+    expect(badge.getAttribute('font-size')).toBe('9');
+    expect(badge.getAttribute('letter-spacing')).toBe('0.09em');
+    const pill = badge.previousElementSibling!;
+    expect(pill.tagName).toBe('rect');
+    expect(pill.getAttribute('fill')).toBe('danger');
+    // "login" is 140 wide at x=100: the pill ends 14px inside the right edge, on the tag row
+    const w = Number(pill.getAttribute('width'));
+    expect(Number(pill.getAttribute('x')) + w).toBeCloseTo(100 + 140 - 14);
+    expect(pill.getAttribute('y')).toBe(String(280 + 10));
+    expect(pill.getAttribute('height')).toBe('12');
+    expect(Number(badge.getAttribute('x'))).toBeCloseTo(Number(pill.getAttribute('x')) + w / 2);
+    // facts, mitigations and defended attacks get no badge
+    expect(texts(doc).filter((t) => t === 'NO DEFENSE' || t === 'OPEN PATH')).toHaveLength(2);
   });
 
   it('draws edge labels centered on their spot, #tags as pills', async () => {

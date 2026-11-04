@@ -58,8 +58,16 @@ export function Legend() {
               Not implemented yet
             </li>
             <li>
-              <span className="edge-label is-tag legend-tag">#yolosec</span>
-              No mitigation in place
+              <svg width="28" height="8" aria-hidden>
+                <line x1="1" y1="4" x2="27" y2="4" className="legend-line is-open" />
+              </svg>
+              Open path: no defense on the way
+            </li>
+            <li>
+              <span className="legend-badge">
+                <span className="tree-node-badge">No defense</span>
+              </span>
+              Nothing counters this attack
             </li>
           </ul>
         </div>

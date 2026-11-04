@@ -494,6 +494,15 @@ a.button {
   text-transform: uppercase;
   line-height: 12px;
 }
+/* "No defense" / "Open path": found by the app (model/analysis.ts defenseGaps); size kept in sync with measure.ts */
+.tree-node-badge {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: var(--on-danger);
+  white-space: nowrap;
+}
 .tree-node-dot {
   width: 6px;
   height: 6px;
@@ -582,6 +591,11 @@ a.button {
   stroke: var(--edge-strong);
   stroke-width: 1.75;
 }
+.react-flow__edge-path.tree-edge.is-open,
+.react-flow__edge.is-path .react-flow__edge-path.tree-edge.is-open {
+  stroke: var(--danger);
+  stroke-width: 2;
+}
 .react-flow__edge-path.tree-edge.is-unimplemented {
   stroke-dasharray: 6 5;
 }
@@ -597,6 +611,43 @@ a.button {
 .react-flow__edge.selected .react-flow__edge-path.tree-edge {
   stroke: var(--accent);
   stroke-width: 2;
+}
+
+/* Ends of the selected arrow: drag one onto another card to move the connection */
+.edge-end {
+  cursor: grab;
+  pointer-events: all;
+}
+.edge-end.is-dragging {
+  cursor: grabbing;
+  /* it follows the pointer: let the card under it be found */
+  pointer-events: none;
+}
+.edge-end-hit {
+  fill: transparent;
+}
+.edge-end-dot {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+  transition: r 120ms ease;
+}
+.edge-end:hover .edge-end-dot,
+.edge-end.is-dragging .edge-end-dot {
+  r: 6px;
+}
+.reconnect-preview {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.75;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.react-flow__node.is-reconnect-target .tree-node {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent),
+    var(--shadow-md);
 }
 
 .edge-label {
@@ -792,12 +843,22 @@ a.button {
 .legend-line.is-unimplemented {
   stroke-dasharray: 6 5;
 }
-.legend-tag {
-  position: static;
-  padding: 0 6px;
-  font-size: 10px;
-  line-height: 15px;
-  cursor: default;
+.legend-line.is-open {
+  stroke: var(--danger);
+  stroke-width: 2;
+}
+.legend-badge {
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 11px;
+}
+.legend-badge .tree-node-badge {
+  margin: 0;
+  padding: 0 3px;
 }
 
 .canvas-empty {
@@ -932,6 +993,7 @@ a.button {
   text-transform: uppercase;
 }
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   padding: 7px 10px;
@@ -949,6 +1011,7 @@ a.button {
   line-height: 1.45;
 }
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -976,6 +1039,28 @@ a.button {
   gap: 14px;
   color: var(--text-3);
   font-size: 12px;
+}
+.inspector-gap {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.inspector-gap svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--danger);
+}
+.inspector-gap p {
+  margin: 0;
+}
+.inspector-gap strong {
+  color: var(--danger);
 }
 .inspector-stats .pinned {
   display: inline-flex;
@@ -1012,6 +1097,14 @@ a.button {
   font-size: 12.5px;
 }
 
+.field select {
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.edge-ends-fields {
+  display: grid;
+  gap: 10px;
+}
 .edge-route {
   display: flex;
   align-items: center;

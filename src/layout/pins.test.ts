@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseTree } from '../model/parse';
 import type { Tree } from '../model/types';
 import type { Layout, PlacedEdge, PlacedNode } from './layout';
-import { connector, withPins } from './pins';
+import { connector, pathEnds, withPins } from './pins';
 
 const TEXT = `attacks:
 - a: A
@@ -165,5 +165,25 @@ describe('withPins', () => {
     // nobody dragged constructor or toString
     expect(out.edges.get('constructor:0')).toBe(edges.get('constructor:0'));
     expect(out.edges.get('toString:0')).toBe(edges.get('toString:0'));
+  });
+});
+
+describe('pathEnds', () => {
+  it('finds where a drawn path starts and ends', () => {
+    expect(pathEnds('M10,20 L10,40 Q10,50 20,50 L80.5,50')).toEqual({ start: { x: 10, y: 20 }, end: { x: 80.5, y: 50 } });
+    expect(pathEnds('M-3.5,-2 L4e1,.5')).toEqual({ start: { x: -3.5, y: -2 }, end: { x: 40, y: 0.5 } });
+  });
+
+  it('agrees with the connectors it draws', () => {
+    const s = { x: 0, y: 0, width: 100, height: 40 };
+    const t = { x: 0, y: 200, width: 100, height: 40 };
+    expect(pathEnds(connector(s, t, false).path)).toEqual({ start: { x: 50, y: 40 }, end: { x: 50, y: 200 } });
+    // backwards: from the top of the source to the bottom of the target
+    expect(pathEnds(connector(s, t, true).path)).toEqual({ start: { x: 50, y: 0 }, end: { x: 50, y: 240 } });
+  });
+
+  it('gives up on a path without two points', () => {
+    expect(pathEnds('')).toBeNull();
+    expect(pathEnds('M1,2')).toBeNull();
   });
 });

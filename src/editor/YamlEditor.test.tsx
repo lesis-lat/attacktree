@@ -430,6 +430,25 @@ describe('YamlEditor: ids colored by kind', () => {
     ]);
   });
 
+  it('a filter entry that names no node is drawn as a ghost; bad ranges are skipped', () => {
+    const tree = parseTree(SRC);
+    const len = SRC.length;
+    const at = SRC.indexOf('- win\n', SRC.indexOf('filter:')) + 2;
+    const filterRefs = [
+      { id: 'nowhere', range: { from: at, to: at + 3 } },
+      { id: 'win', range: { from: len, to: len + 3 } },
+    ];
+    const { view } = setup({ tree: { ...tree, filterRefs } });
+    const refs = [...view().contentDOM.querySelectorAll('.cm-node-ref')].filter((el) => view().posAtDOM(el) >= at);
+    expect(refs.map((el) => [el.className, el.textContent])).toEqual([['cm-node-ref cm-kind-ghost', 'win']]);
+  });
+
+  it('a tree without filter ranges (built by hand) still renders', () => {
+    const { filterRefs: _, ...tree } = parseTree(SRC);
+    const { view } = setup({ tree });
+    expect(marks(view())).toHaveLength(9);
+  });
+
   it('colors ids referenced under filter: too', () => {
     const { view } = setup();
     const filterAt = SRC.indexOf('filter:');

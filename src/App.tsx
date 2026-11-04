@@ -364,6 +364,22 @@ export function App() {
     [apply, toast],
   );
 
+  const reconnect = useCallback(
+    (edgeId: string, to: { source: string; target: string }) => {
+      const t = refs.current.tree;
+      const edge = t.edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      // pointing back at an ancestor makes it a backwards edge, as when connecting
+      const backwards = pointsBackwards({ ...t, edges: t.edges.filter((e) => e.id !== edgeId) }, to.source, to.target);
+      let next = '';
+      if (!apply((text) => (next = edit.reconnectEdge(text, edge.target, edge.fromIndex, { ...to, backwards })))) return;
+      const moved = parseTree(next).edges.find((e) => e.source === to.source && e.target === to.target && e.backwards === backwards);
+      if (moved) setSelection({ type: 'edge', id: moved.id });
+      if (backwards && !edge.backwards) toast('Now a backwards edge: it points back up the tree');
+    },
+    [apply, toast],
+  );
+
   const onCreateFrom = useCallback(
     (source: string) => {
       const node = refs.current.tree.nodes.find((n) => n.id === source);
@@ -422,6 +438,7 @@ export function App() {
     addChild: (id, kind) => addNode(kind, [id]),
     deleteNode: (id) => onDelete([id], []),
     updateEdge: (e, patch) => apply((t) => edit.updateEdge(t, e.target, e.fromIndex, patch)),
+    reconnect: (e, to) => reconnect(e.id, to),
     deleteEdge: (e) => {
       if (apply((t) => edit.removeEdge(t, e.target, e.fromIndex))) setSelection(null);
     },
@@ -744,6 +761,7 @@ export function App() {
               onEditLabel={focusLabel}
               onMove={onMove}
               onResetLayout={onResetLayout}
+              onReconnect={reconnect}
             />
           </ReactFlowProvider>
           {readOnly && errors[0] && (

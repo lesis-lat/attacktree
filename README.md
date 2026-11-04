@@ -18,7 +18,7 @@ O Deciduous não recebe manutenção desde abril de 2024 (o último commit é de
 
 - **Tipos de nó:** `reality` (raiz implícita), `facts`, `attacks`, `mitigations` e `goals`.
 - **Ligações:** cada nó declara de onde vem com `from:`.
-- **Rótulos de aresta:** um texto qualquer pode rotular uma aresta. Por convenção, `#yolosec` marca um caminho sem mitigação ou com uma prática ruim.
+- **Rótulos de aresta:** um texto qualquer pode rotular uma aresta. No Deciduous, `#yolosec` marca à mão um passo sem defesa. O attacktree mantém esse rótulo como texto comum e encontra sozinho os passos sem defesa (veja abaixo).
 - **`backwards: true`:** a mitigação força o atacante a voltar e tentar outro ramo.
 - **`implemented: false`:** a mitigação ainda não foi implementada.
 - **`filter`:** mostra só os caminhos que passam pelos nós listados.
@@ -52,14 +52,19 @@ Primeira versão funcional (v0.1):
 - **Sincronização nos dois sentidos:**
   - clicar num nó seleciona o trecho correspondente no YAML, e mover o cursor no YAML seleciona o nó;
   - arrastar de um nó para outro cria a ligação;
+  - uma seta selecionada mostra uma bolinha em cada ponta: arrastar uma delas para outro card move a ligação (ou use **From** e **To** no painel), e o YAML acompanha com rótulo, flags e comentários;
   - soltar no vazio cria o próximo nó (depois de um ataque vem uma mitigação, e vice-versa);
-  - o painel lateral edita rótulo, tipo e id (renomear o id atualiza todas as referências), além de `#yolosec`, `backwards` e `implemented`;
+  - o painel lateral edita rótulo, tipo e id (renomear o id atualiza todas as referências), além de `backwards` e `implemented`;
   - Delete apaga e Ctrl+Z desfaz, inclusive no canvas;
   - as edições feitas no canvas alteram o próprio YAML e mantêm os comentários.
 - **Reorganizar com o mouse:**
   - arrastar um nó fixa a posição dele, e as ligações acompanham o nó;
   - as posições ficam numa seção `positions:` no fim do YAML, que o Deciduous ignora, então vão junto em arquivos, links e exportações;
   - "Auto-arrange" volta ao layout automático, para todos os nós ou só para um (pelo painel lateral).
+- **Lacunas encontradas sozinhas:**
+  - um ataque sem mitigação implementada ganha o selo **No defense**;
+  - um objetivo que o atacante alcança sem vencer nenhuma defesa ganha o selo **Open path**, e as setas desse caminho ficam vermelhas;
+  - o painel lateral explica cada caso, e o cálculo usa a árvore inteira, mesmo com `filter` (`defenseGaps` em `src/model/analysis.ts`).
 - **Destaque de caminho:** ao selecionar um nó, o que leva até ele e o que vem depois fica em evidência.
 - **Local-first:**
   - várias árvores salvas no navegador (IndexedDB);

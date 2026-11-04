@@ -114,7 +114,7 @@ describe('DocsApp: the guide', () => {
     expect(ids.length).toBe(SECTIONS.length + [...rawGuide.matchAll(/^### /gm)].length);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('diagnostics');
-    expect(ids).toContain('yolosec-nothing-in-the-way');
+    expect(ids).toContain('gaps-no-defense-and-open-paths');
   });
 
   it('renders inline Markdown inside headings', () => {

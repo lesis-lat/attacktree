@@ -59,6 +59,7 @@ function meaning(tree: Tree) {
   };
 }
 
+const byJson = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b));
 const messages = (text: string) => parseTree(text).diagnostics.map((d) => d.message);
 
 /** every comment line in a YAML text, as the yaml library sees them */
@@ -540,6 +541,86 @@ describe('updateEdge', () => {
     expect(() => edit.updateEdge(one('  - {}\n'), 'a', 0, { implemented: false })).toThrow(err);
     expect(() => edit.updateEdge(one('  - [b]\n'), 'a', 0, { implemented: false })).toThrow(err);
     expect(() => edit.updateEdge('attacks:\n- a: A\n', 'a', 0, { implemented: false })).toThrow(err);
+  });
+});
+
+describe('reconnectEdge', () => {
+  const ends = (source: string, target: string, backwards = false) => ({ source, target, backwards });
+
+  it('changes where a connection comes from, in place', () => {
+    // login comes from leak; make it come from reality
+    const text = edit.reconnectEdge(SMALL, 'login', 0, ends('reality', 'login'));
+    expect(text).toContain('- login: Log in with leaked creds\n  from:\n  - reality\n');
+    expect(text.replace('  - reality\n- brute', '  - leak\n- brute')).toBe(SMALL);
+  });
+
+  it('moves a connection to another target, keeping its label and comments', () => {
+    const src = 'facts:\n- f: F\n  from:\n  - reality: via a gist # how\nattacks:\n- a: A\n  from:\n  - f\n';
+    const text = edit.reconnectEdge(src, 'f', 0, ends('reality', 'a'));
+    expect(text).toBe('facts:\n- f: F\nattacks:\n- a: A\n  from:\n  - f\n  - reality: via a gist # how\n');
+    expect(messages(text)).toEqual([]);
+  });
+
+  it('keeps flags when it moves, and creates the "from" list a node did not have', () => {
+    const src = 'attacks:\n- a: A\n  from:\n  - reality:\n    implemented: false\n- b: B\n';
+    const text = edit.reconnectEdge(src, 'a', 0, ends('reality', 'b'));
+    expect(text).toBe('attacks:\n- a: A\n- b: B\n  from:\n  - reality:\n    implemented: false\n');
+  });
+
+  it('sets or clears backwards as asked', () => {
+    const src = 'attacks:\n- a: A\n  from:\n  - reality\n- b: B\n  from:\n  - a\n';
+    const back = edit.reconnectEdge(src, 'b', 0, ends('a', 'b', true));
+    expect(back).toContain('- b: B\n  from:\n  - a:\n    backwards: true\n');
+    expect(edit.reconnectEdge(back, 'b', 0, ends('a', 'b', false))).toBe(src);
+  });
+
+  it('nests flags under an id named like a flag', () => {
+    const src = 'attacks:\n- backwards: Weird\n  from:\n  - reality\n- b: B\n  from:\n  - reality:\n    implemented: false\n';
+    const text = edit.reconnectEdge(src, 'b', 0, ends('backwards', 'b'));
+    expect(text).toContain('  - backwards:\n      implemented: false\n');
+    expect(parseTree(text).edges.find((e) => e.target === 'b')).toMatchObject({ source: 'backwards', implemented: false });
+  });
+
+  it('keeps the flush list style of Deciduous files and the indented style', () => {
+    expect(edit.reconnectEdge(SMALL, 'win', 1, ends('leak', 'win'))).toContain('- win: Attacker wins\n  from:\n  - login\n  - leak\n');
+    expect(edit.reconnectEdge(INDENTED, 'login', 0, ends('reality', 'login'))).toContain('  - login: Log in\n    from:\n      - reality\n');
+  });
+
+  it('returns the text unchanged when nothing changes', () => {
+    expect(edit.reconnectEdge(SMALL, 'login', 0, ends('leak', 'login'))).toBe(SMALL);
+  });
+
+  it('refuses a duplicate, a loop, Reality as a target and undeclared targets', () => {
+    expect(() => edit.reconnectEdge(SMALL, 'win', 1, ends('login', 'win'))).toThrow(new MutationError('"win" already comes from "login"'));
+    expect(() => edit.reconnectEdge(SMALL, 'mfa', 0, ends('login', 'login'))).toThrow(new MutationError('"login" already comes from "login"'.replace(/.*/, 'A node cannot come from itself')));
+    expect(() => edit.reconnectEdge(SMALL, 'mfa', 0, ends('login', 'reality'))).toThrow(new MutationError('Nothing can lead into Reality'));
+    expect(() => edit.reconnectEdge(SMALL, 'mfa', 0, ends('login', 'nowhere'))).toThrow(new MutationError('"nowhere" is not declared'));
+    // the same pair in the other direction is not a duplicate
+    expect(() => edit.reconnectEdge(SMALL, 'win', 1, ends('login', 'win', true))).not.toThrow();
+  });
+
+  it('refuses a connection that no longer exists', () => {
+    for (const index of [-1, 0.5, 9]) {
+      expect(() => edit.reconnectEdge(SMALL, 'login', index, ends('reality', 'login'))).toThrow(new MutationError('That connection no longer exists'));
+    }
+    expect(() => edit.reconnectEdge(SMALL, 'mfa', 3, ends('reality', 'mfa'))).toThrow(MutationError);
+    // a node without "from" has no connection to move
+    expect(() => edit.reconnectEdge('attacks:\n- a: A\n', 'a', 0, ends('reality', 'a'))).toThrow(new MutationError('That connection no longer exists'));
+    expect(() => edit.reconnectEdge(SMALL, 'ghost', 0, ends('reality', 'login'))).toThrow(new MutationError('"ghost" is not declared'));
+  });
+
+  it('keeps the comment of a "from" list that goes away with its last entry', () => {
+    const src = 'attacks:\n- a: A\n  from: # why it starts here\n  - reality\n- b: B\n';
+    const text = edit.reconnectEdge(src, 'a', 0, ends('reality', 'b'));
+    expect(text).toBe('attacks:\n- a: A # why it starts here\n- b: B\n  from:\n  - reality\n');
+    // also for a node with an empty label, and next to a comment already on the label
+    expect(edit.removeEdge('attacks:\n- a:\n  from: # note\n  - reality\n', 'a', 0)).toBe('attacks:\n- a: # note\n');
+    expect(edit.removeEdge('attacks:\n- a: A # one\n  from: # two\n  - reality\n', 'a', 0)).toBe('attacks:\n- a: A\n    # one\n    # two\n');
+    expect(parseTree(edit.removeEdge('attacks:\n- a: A # one\n  from: # two\n  - reality\n', 'a', 0)).diagnostics).toEqual([]);
+  });
+
+  it('refuses to edit broken YAML', () => {
+    expect(() => edit.reconnectEdge('facts: [', 'a', 0, ends('reality', 'a'))).toThrow(MutationError);
   });
 });
 
@@ -1039,6 +1120,35 @@ describe('every edit keeps the document valid and its comments', async () => {
           expect(updated).toMatchObject({ source: e.source, target: e.target, label: expected.label, backwards: expected.backwards, implemented: expected.implemented, ungrouped: expected.ungrouped });
           const others = (x: Tree) => x.edges.filter((y) => y.id !== e.id).map(({ range: _r, sourceRange: _s, ...rest }) => rest);
           expect(others(t)).toEqual(others(tree));
+        }
+      }
+    });
+
+    it('reconnectEdge', () => {
+      const some = declared.slice(0, 5);
+      for (const e of tree.edges.slice(0, 8)) {
+        if (!declared.some((n) => n.id === e.target)) continue;
+        for (const n of some) {
+          for (const [source, target] of [
+            [n.id, e.target],
+            [e.source, n.id],
+          ]) {
+            if (source === target || target === 'reality') continue;
+            const clash = tree.edges.some((x) => x !== e && x.source === source && x.target === target && x.backwards === e.backwards);
+            const run = () => edit.reconnectEdge(src, e.target, e.fromIndex, { source, target, backwards: e.backwards });
+            if (clash) {
+              expect(run).toThrow(MutationError);
+              continue;
+            }
+            const t = check(src, run());
+            const moved = { source, target, label: e.label, backwards: e.backwards, implemented: e.implemented, ungrouped: e.ungrouped };
+            const strip = ({ source, target, label, backwards, implemented, ungrouped }: Tree['edges'][number]) => ({ source, target, label, backwards, implemented, ungrouped });
+            const others = tree.edges.filter((x) => x !== e).map(strip);
+            expect(t.edges.map(strip).sort(byJson)).toEqual([...others, moved].sort(byJson));
+            // the implicit reality and undeclared ids come and go with the references to them
+            const declaredOnly = (nodes: typeof before.nodes) => nodes.filter((x) => x.declared);
+            expect(declaredOnly(meaning(t).nodes)).toEqual(declaredOnly(before.nodes));
+          }
         }
       }
     });

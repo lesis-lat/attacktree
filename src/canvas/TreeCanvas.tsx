@@ -24,29 +24,40 @@ import {
 import { Maximize, Minus, Plus, WandSparkles } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Layout, PlacedLabel } from '../layout/layout';
-import { connector } from '../layout/pins';
-import { lineage } from '../model/analysis';
+import { connector, pathEnds } from '../layout/pins';
+import { type Badge, badgeOf, defenseGaps, lineage } from '../model/analysis';
 import { type DeclaredKind, isGhost, KIND_LABEL, type Tree, type TreeEdge, type TreeNode } from '../model/types';
 import { cx } from '../ui/cx';
 import { Legend } from './Legend';
 
 export type Selection = { type: 'node' | 'edge'; id: string } | null;
 
-type TreeNodeData = { node: TreeNode; lines: string[] };
+type TreeNodeData = { node: TreeNode; lines: string[]; badge: Badge | null };
 type TreeFlowNode = Node<TreeNodeData, 'tree'>;
 type RoutedEdgeData = {
   edge: TreeEdge;
   path: string;
   label?: PlacedLabel;
   onPath: boolean;
+  /** on a path that reaches a goal without beating any defense */
+  open: boolean;
   /** follow the nodes as they move instead of using the precomputed route */
   live: boolean;
   select(id: string): void;
+  /** dragging an end onto another node moves the connection; null when read-only */
+  reconnect: Reconnect | null;
+};
+
+type End = 'source' | 'target';
+type Reconnect = {
+  /** may this end of the connection move onto that node? */
+  can(edge: TreeEdge, end: End, nodeId: string): boolean;
+  move(edge: TreeEdge, end: End, nodeId: string): void;
 };
 type RoutedFlowEdge = Edge<RoutedEdgeData, 'routed'>;
 
 const NodeCard = memo(function NodeCard({ id, data, selected }: NodeProps<TreeFlowNode>) {
-  const { node, lines } = data;
+  const { node, lines, badge } = data;
   const ghost = isGhost(node);
   // While dragging a connection, the whole card becomes a drop target.
   const dropTarget = useConnection((c) => c.inProgress && c.fromNode.id !== id && node.kind !== 'reality' && !ghost);
@@ -57,6 +68,11 @@ const NodeCard = memo(function NodeCard({ id, data, selected }: NodeProps<TreeFl
         <div className="tree-node-tag">
           <span className="tree-node-dot" />
           {ghost ? 'Undeclared' : KIND_LABEL[node.kind]}
+          {badge && (
+            <span className="tree-node-badge" title={badge.hint}>
+              {badge.label}
+            </span>
+          )}
         </div>
       )}
       <div className="tree-node-label">
@@ -78,6 +94,93 @@ function rectOf(n: InternalNode) {
   };
 }
 
+/**
+ * The card under the pointer. Looks past the dot being dragged and its preview line, but
+ * not past anything else: a card hidden under the inspector is not a drop target.
+ */
+function nodeUnder(x: number, y: number): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    if (el.closest('.edge-end, .reconnect-preview')) continue;
+    return el.closest('.react-flow__node')?.getAttribute('data-id') ?? null;
+  }
+  return null;
+}
+
+/**
+ * The two ends of the selected arrow, where it actually meets the cards (ELK routes don't
+ * start at the handles). Drag one onto another card to move that end of the connection.
+ */
+function EndHandles({ edge, path, reconnect }: { edge: TreeEdge; path: string; reconnect: Reconnect }) {
+  const flow = useReactFlow();
+  const [drag, setDrag] = useState<{ end: End; x: number; y: number } | null>(null);
+  const stop = useRef<(() => void) | null>(null);
+  // an arrow that goes away mid-drag (undo, the YAML changed) must not leave listeners behind
+  useEffect(() => () => stop.current?.(), []);
+  const ends = pathEnds(path);
+  if (!ends) return null;
+  const at = (end: End) => (end === 'source' ? ends.start : ends.end);
+
+  const begin = (end: End) => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    let hovered: Element | null = null;
+    const mark = (id: string | null) => {
+      hovered?.classList.remove('is-reconnect-target');
+      hovered = id && reconnect.can(edge, end, id) ? document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`) : null;
+      hovered?.classList.add('is-reconnect-target');
+    };
+    const move = (ev: PointerEvent) => {
+      setDrag({ end, ...flow.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }) });
+      mark(nodeUnder(ev.clientX, ev.clientY));
+    };
+    const finish = (ev: PointerEvent | null) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      stop.current = null;
+      mark(null);
+      setDrag(null);
+      const id = ev && nodeUnder(ev.clientX, ev.clientY);
+      if (!id || !reconnect.can(edge, end, id)) return;
+      // the click that ends the drag must not land on the pane and clear the selection
+      const swallow = (c: Event) => c.stopPropagation();
+      window.addEventListener('click', swallow, true);
+      setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+      reconnect.move(edge, end, id);
+    };
+    const up = (ev: PointerEvent) => finish(ev);
+    const cancel = () => finish(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    stop.current = cancel;
+    setDrag({ end, ...at(end) });
+  };
+
+  const fixed = drag && at(drag.end === 'source' ? 'target' : 'source');
+  return (
+    <g className="edge-ends">
+      {drag && fixed && <path className="reconnect-preview" d={`M${fixed.x},${fixed.y} L${drag.x},${drag.y}`} />}
+      {(['source', 'target'] as const).map((end) => {
+        const p = drag?.end === end ? drag : at(end);
+        return (
+          <g
+            key={end}
+            className={cx('edge-end nodrag nopan', drag?.end === end && 'is-dragging')}
+            data-end={end}
+            onPointerDown={begin(end)}
+          >
+            <title>{end === 'source' ? 'Drag to change where this comes from' : 'Drag to change where this leads'}</title>
+            <circle className="edge-end-hit" cx={p.x} cy={p.y} r={12} />
+            <circle className="edge-end-dot" cx={p.x} cy={p.y} r={4.5} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 const RoutedEdge = memo(function RoutedEdge({ id, source, target, data, selected }: EdgeProps<RoutedFlowEdge>) {
   const s = useInternalNode(source);
   const t = useInternalNode(target);
@@ -86,7 +189,7 @@ const RoutedEdge = memo(function RoutedEdge({ id, source, target, data, selected
   const live = data.live && s && t ? connector(rectOf(s), rectOf(t), edge.backwards) : null;
   const path = live?.path ?? data.path;
   const label = data.label && live ? { ...data.label, ...live.label } : data.label;
-  const marker = selected ? 'selected' : edge.backwards ? 'backwards' : data.onPath ? 'path' : 'default';
+  const marker = selected ? 'selected' : edge.backwards ? 'backwards' : data.open ? 'open' : data.onPath ? 'path' : 'default';
   return (
     <>
       <BaseEdge
@@ -94,7 +197,7 @@ const RoutedEdge = memo(function RoutedEdge({ id, source, target, data, selected
         path={path}
         markerEnd={`url(#at-arrow-${marker})`}
         interactionWidth={18}
-        className={cx('tree-edge', edge.backwards && 'is-backwards', !edge.implemented && 'is-unimplemented')}
+        className={cx('tree-edge', edge.backwards && 'is-backwards', !edge.implemented && 'is-unimplemented', data.open && 'is-open')}
       />
       {label && edge.label && (
         <EdgeLabelRenderer>
@@ -110,6 +213,7 @@ const RoutedEdge = memo(function RoutedEdge({ id, source, target, data, selected
           </button>
         </EdgeLabelRenderer>
       )}
+      {selected && data.reconnect && <EndHandles edge={edge} path={path} reconnect={data.reconnect} />}
     </>
   );
 });
@@ -141,6 +245,7 @@ function ArrowDefs() {
         {arrow('path', 'var(--edge-strong)')}
         {arrow('selected', 'var(--accent)')}
         {arrow('backwards', 'var(--edge-backwards)')}
+        {arrow('open', 'var(--danger)')}
       </defs>
     </svg>
   );
@@ -164,6 +269,8 @@ interface Props {
   onMove(moved: Record<string, { x: number; y: number }>): void;
   /** forget the hand-placed positions of these nodes (the ones on screen) */
   onResetLayout(ids: string[]): void;
+  /** move an end of a connection to another node */
+  onReconnect(edgeId: string, to: { source: string; target: string }): void;
 }
 
 export function TreeCanvas(props: Props) {
@@ -182,6 +289,22 @@ export function TreeCanvas(props: Props) {
   }, [tree, selection]);
 
   const select = useCallback((id: string) => callbacks.current.onSelect({ type: 'edge', id }), []);
+  const gaps = useMemo(() => defenseGaps(tree), [tree]);
+  const reconnect = useMemo<Reconnect | null>(() => {
+    if (readOnly) return null;
+    const byId = new Map(tree.nodes.map((n) => [n.id, n]));
+    const ends = (edge: TreeEdge, end: End, nodeId: string) =>
+      end === 'source' ? { source: nodeId, target: edge.target } : { source: edge.source, target: nodeId };
+    return {
+      can(edge, end, nodeId) {
+        const to = ends(edge, end, nodeId);
+        if (to.source === to.target || (to.source === edge.source && to.target === edge.target)) return false;
+        const target = byId.get(to.target);
+        return !!target && target.declared && target.kind !== 'reality' && byId.has(to.source);
+      },
+      move: (edge, end, nodeId) => callbacks.current.onReconnect(edge.id, ends(edge, end, nodeId)),
+    };
+  }, [tree, readOnly]);
 
   const built = useMemo<TreeFlowNode[]>(() => {
     if (!layout) return [];
@@ -195,7 +318,7 @@ export function TreeCanvas(props: Props) {
           position: { x: p.x, y: p.y },
           width: p.width,
           height: p.height,
-          data: { node, lines: p.lines },
+          data: { node, lines: p.lines, badge: badgeOf(node.id, gaps) },
           selected: selection?.type === 'node' && selection.id === node.id,
           className: cx(focus && (focus.nodes.has(node.id) ? 'is-path' : 'is-dim')),
           deletable: node.declared && node.kind !== 'reality' && !readOnly,
@@ -204,7 +327,7 @@ export function TreeCanvas(props: Props) {
         },
       ];
     });
-  }, [tree, layout, selection, focus, readOnly]);
+  }, [tree, layout, selection, focus, readOnly, gaps]);
 
   const [nodes, setNodes] = useState<TreeFlowNode[]>([]);
   useEffect(() => {
@@ -251,14 +374,14 @@ export function TreeCanvas(props: Props) {
           type: 'routed' as const,
           source: edge.source,
           target: edge.target,
-          data: { edge, path: placed.path, label: placed.label, onPath: !!onPath, live, select },
+          data: { edge, path: placed.path, label: placed.label, onPath: !!onPath, open: gaps.openEdges.has(edge.id), live, select, reconnect },
           selected: selection?.type === 'edge' && selection.id === edge.id,
           className: cx(focus && (onPath ? 'is-path' : 'is-dim')),
           deletable: !readOnly,
         },
       ];
     });
-  }, [tree, layout, selection, focus, select, readOnly, moving]);
+  }, [tree, layout, selection, focus, select, readOnly, moving, gaps, reconnect]);
 
   // Fit the whole tree when a document opens.
   const fitted = useRef(-1);
@@ -338,6 +461,9 @@ export function TreeCanvas(props: Props) {
         selectionKeyCode={null}
         multiSelectionKeyCode={null}
         isValidConnection={isValidConnection}
+        // the selected arrow is drawn above the cards, so both of its ends can be grabbed
+        elevateEdgesOnSelect
+        edgesReconnectable={false}
         onDelete={onDelete}
         deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
         nodesDraggable={!readOnly}

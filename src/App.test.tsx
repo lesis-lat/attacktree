@@ -802,7 +802,8 @@ describe('canvas editing', () => {
     await mountReady('win');
     act(() => canvas().onSelect({ type: 'edge', id: 'push:0' }));
     expect(inspector()).toHaveTextContent('Connection');
-    expect(inspector()).toHaveTextContent('Phish a maintainerPush to main');
+    expect(within(inspector()!).getByRole('combobox', { name: 'From' })).toHaveValue('phish');
+    expect(within(inspector()!).getByRole('combobox', { name: 'To' })).toHaveValue('push');
     const { from, to } = view().state.selection.main;
     expect(yaml().slice(from, to)).toBe('phish');
     expect(yaml().lastIndexOf('- phish', from)).toBeGreaterThan(yaml().indexOf('- push: Push to main'));
@@ -815,7 +816,8 @@ describe('canvas editing', () => {
     expect(inspector()).toHaveTextContent('Mitigation');
     setCursor(yaml().indexOf('  - push') + 4);
     expect(inspector()).toHaveTextContent('Connection');
-    expect(inspector()).toHaveTextContent('Push to mainMalicious release');
+    expect(within(inspector()!).getByRole('combobox', { name: 'From' })).toHaveValue('push');
+    expect(within(inspector()!).getByRole('combobox', { name: 'To' })).toHaveValue('win');
     setCursor(0);
     expect(inspector()).toBeNull();
   });
@@ -1012,16 +1014,96 @@ describe('canvas editing', () => {
     expect(inspector()).toBeNull();
   });
 
+  it('shows an attack with no defense, and the badge goes once a mitigation is added', async () => {
+    await seed(SMALL);
+    await mountReady('win');
+    const badge = (id: string) => flowNode(id)!.querySelector('.tree-node-badge');
+    // phish is countered by MFA; nothing counters push
+    expect(badge('phish')).toBeNull();
+    expect(badge('push')).toHaveTextContent('No defense');
+    // and the way to the goal goes through phish, which is defended: no open path
+    expect(badge('win')).toBeNull();
+    fireEvent.click(flowNode('push')!);
+    expect(within(inspector()!).getByRole('note')).toHaveTextContent('No defense.');
+    fireEvent.click(within(inspector()!).getByRole('button', { name: /Add mitigation after/ }));
+    expect(yaml()).toMatch(/mitigations:\n- mfa: Hardware keys\n {2}from:\n {2}- phish\n- new_mitigation: New mitigation\n {2}from:\n {2}- push\n/);
+    await waitFor(() => expect(badge('push')).toBeNull());
+  });
+
+  it('a planned defense leaves an open path to the goal, in red', async () => {
+    await seed(SMALL.replace('  from:\n  - phish\n\ngoals', '  from:\n  - phish:\n    implemented: false\n\ngoals'));
+    await mountReady('win');
+    await waitFor(() => expect(flowNode('win')!.querySelector('.tree-node-badge')).toHaveTextContent('Open path'));
+    expect(flowNode('phish')!.querySelector('.tree-node-badge')).toHaveTextContent('No defense');
+    // (the red arrows themselves are drawn by TreeCanvas and tested there; jsdom draws no edges here)
+    for (const id of ['phish:0', 'push:0', 'win:0']) {
+      act(() => canvas().onSelect({ type: 'edge', id }));
+      expect(within(inspector()!).getByRole('note')).toHaveTextContent('Open path.');
+    }
+    act(() => canvas().onSelect({ type: 'edge', id: 'mfa:0' }));
+    expect(within(inspector()!).queryByRole('note')).toBeNull();
+    fireEvent.click(flowNode('win')!);
+    expect(within(inspector()!).getByRole('note')).toHaveTextContent('Open path. The attacker can reach this goal without beating any defense.');
+  });
+
+  it('moves the end of a connection from the inspector, and the selection follows it', async () => {
+    await seed(SMALL);
+    await mountReady('win');
+    // win comes from push; make it come from phish instead
+    act(() => canvas().onSelect({ type: 'edge', id: 'win:0' }));
+    fireEvent.change(within(inspector()!).getByRole('combobox', { name: 'From' }), { target: { value: 'phish' } });
+    expect(yaml()).toContain('- win: Malicious release\n  from:\n  - phish\n');
+    expect(within(inspector()!).getByRole('combobox', { name: 'From' })).toHaveValue('phish');
+    // push already comes from phish: moving the end there would be a duplicate, refused with a toast
+    const before = yaml();
+    fireEvent.change(within(inspector()!).getByRole('combobox', { name: 'To' }), { target: { value: 'push' } });
+    expect(await screen.findByText('"push" already comes from "phish"')).toHaveClass('is-error');
+    expect(yaml()).toBe(before);
+    // move it to another target: the entry leaves win and joins public_repo, which leads to phish: backwards
+    fireEvent.change(within(inspector()!).getByRole('combobox', { name: 'To' }), { target: { value: 'public_repo' } });
+    expect(yaml()).not.toContain('- win: Malicious release\n  from');
+    expect(yaml()).toContain('- public_repo: Source is public\n  from:\n  - reality\n  - phish:\n    backwards: true\n');
+    expect(within(inspector()!).getByRole('combobox', { name: 'To' })).toHaveValue('public_repo');
+  });
+
+  it('moves a connection dragged on the canvas, keeping its label', async () => {
+    await seed(SMALL.replace('- mfa: Hardware keys\n  from:\n  - phish\n', "- mfa: Hardware keys\n  from:\n  - phish: 'via SSO'\n"));
+    await mountReady('win');
+    // mfa comes from phish ("via SSO"); drag its target end onto win
+    const edge = canvas().tree.edges.find((e) => e.target === 'mfa')!;
+    act(() => canvas().onReconnect(edge.id, { source: 'phish', target: 'win' }));
+    expect(yaml()).toContain('- win: Malicious release\n  from:\n  - push\n  - phish: via SSO\n');
+    expect(yaml()).toContain('- mfa: Hardware keys\n\ngoals');
+    await waitFor(() => expect(inspector()).toHaveTextContent('Connection'));
+    expect(within(inspector()!).getByRole('combobox', { name: 'To' })).toHaveValue('win');
+  });
+
+  it('pointing a connection back at an ancestor makes it a backwards edge', async () => {
+    await seed(SMALL);
+    await mountReady('win');
+    // mfa comes from phish; make phish come from push instead, which phish leads to: a loop
+    const edge = canvas().tree.edges.find((e) => e.target === 'push')!;
+    act(() => canvas().onReconnect(edge.id, { source: 'win', target: 'push' }));
+    expect(yaml()).toContain('- push: Push to main\n  from:\n  - win:\n    backwards: true\n');
+    expect(await screen.findByText('Now a backwards edge: it points back up the tree')).toBeInTheDocument();
+  });
+
+  it('ignores a reconnect for a connection that is gone', async () => {
+    await seed(SMALL);
+    await mountReady('win');
+    const before = yaml();
+    act(() => canvas().onReconnect('nope:9', { source: 'phish', target: 'win' }));
+    expect(yaml()).toBe(before);
+  });
+
   it('edits a connection through the inspector', async () => {
     await seed(SMALL);
     await mountReady('win');
     act(() => canvas().onSelect({ type: 'edge', id: 'push:0' }));
-    fireEvent.click(within(inspector()!).getByRole('button', { name: /#yolosec/ }));
-    expect(yaml()).toContain("- push: Push to main\n  from:\n  - phish: '#yolosec'\n");
+    fireEvent.change(within(inspector()!).getByPlaceholderText('e.g. via a phishing kit'), { target: { value: 'via SSO' } });
+    expect(yaml()).toContain("- push: Push to main\n  from:\n  - phish: via SSO\n");
     fireEvent.click(within(inspector()!).getByRole('button', { name: /Not implemented/ }));
-    expect(yaml()).toContain("  - phish: '#yolosec'\n    implemented: false\n");
-    fireEvent.change(within(inspector()!).getByPlaceholderText('e.g. #yolosec'), { target: { value: 'via SSO' } });
-    expect(yaml()).toContain('  - phish: via SSO\n');
+    expect(yaml()).toContain('  - phish: via SSO\n    implemented: false\n');
     fireEvent.click(within(inspector()!).getByRole('button', { name: /Delete connection/ }));
     expect(yaml()).toContain('- push: Push to main\n\n');
     expect(inspector()).toBeNull();

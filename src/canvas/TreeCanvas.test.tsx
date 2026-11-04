@@ -137,6 +137,7 @@ type Handlers = {
   onEditLabel: ReturnType<typeof vi.fn>;
   onMove: ReturnType<typeof vi.fn>;
   onResetLayout: ReturnType<typeof vi.fn>;
+  onReconnect: ReturnType<typeof vi.fn>;
 };
 
 interface Options {
@@ -164,6 +165,7 @@ async function setup(options: Options = {}) {
     onEditLabel: vi.fn(),
     onMove: vi.fn(),
     onResetLayout: vi.fn(),
+    onReconnect: vi.fn(),
   };
   let current: Required<Options> = {
     tree,
@@ -219,7 +221,8 @@ describe('rendering', () => {
       expect(el.style.height).toBe(`${p.height}px`);
       expect(el.querySelector('.tree-node')).toHaveClass(`kind-${n.kind}`);
     }
-    expect(nodeEl('phish')).toHaveTextContent('AttackPhish an engineer');
+    expect(nodeEl('phish').querySelector('.tree-node-tag')).toHaveTextContent('AttackNo defense');
+    expect(nodeEl('phish').querySelector('.tree-node-label')).toHaveTextContent('Phish an engineer');
     expect(nodeEl('review')).toHaveTextContent('Mitigation');
     // reality has no tag
     expect(nodeEl('reality').querySelector('.tree-node-tag')).toBeNull();
@@ -227,6 +230,35 @@ describe('rendering', () => {
     // undeclared nodes are drawn as ghosts
     expect(nodeEl('ghost').querySelector('.tree-node')).toHaveClass('is-ghost');
     expect(nodeEl('ghost')).toHaveTextContent('Undeclared');
+  });
+
+  it('marks attacks with no defense, goals with an open path, and the red way there', async () => {
+    // "review" is only planned, so nothing stops "phish" or "push"
+    await setup();
+    const badge = (id: string) => nodeEl(id).querySelector('.tree-node-badge');
+    for (const id of ['phish', 'push']) {
+      expect(badge(id)).toHaveTextContent('No defense');
+      expect(badge(id)).toHaveAttribute('title', 'Nothing counters this attack yet: no mitigation in place comes from it.');
+    }
+    for (const id of ['shipped', 'other']) expect(badge(id)).toHaveTextContent('Open path');
+    for (const id of ['review', 'ghost']) expect(badge(id)).toBeNull();
+    const path = (id: string) => edgeEl(id)!.querySelector('path.tree-edge')!;
+    for (const id of ['phish:0', 'push:0', 'shipped:0', 'shipped:1', 'other:0']) {
+      expect(path(id)).toHaveClass('is-open');
+      expect(path(id).getAttribute('marker-end')).toBe('url(#at-arrow-open)');
+    }
+    // planned and backwards connections are not steps of a path
+    for (const id of ['review:0', 'phish:1']) expect(path(id)).not.toHaveClass('is-open');
+  });
+
+  it('a defense in place clears the badges and the red path behind it', async () => {
+    const tree = parseTree(TEXT.replace('  - push:\n    implemented: false\n', '  - push\n'));
+    await setup({ tree });
+    expect(nodeEl('push').querySelector('.tree-node-badge')).toBeNull();
+    // phish still has nothing of its own, but the way on to "shipped" now meets the review
+    expect(nodeEl('phish').querySelector('.tree-node-badge')).toHaveTextContent('No defense');
+    expect(edgeEl('shipped:0')!.querySelector('path.tree-edge')).not.toHaveClass('is-open');
+    expect(edgeEl('push:0')!.querySelector('path.tree-edge')).not.toHaveClass('is-open');
   });
 
   it('draws one span per laid-out line', async () => {
@@ -252,12 +284,13 @@ describe('rendering', () => {
     expect(planned).toHaveClass('is-unimplemented');
     expect(planned.getAttribute('marker-end')).toBe('url(#at-arrow-default)');
     expect(edgeEl('push:0')!.querySelector('path.tree-edge')).not.toHaveClass('is-backwards');
-    // the four arrowheads are defined once
+    // the five arrowheads are defined once
     expect([...document.querySelectorAll('.arrow-defs marker')].map((m) => m.id)).toEqual([
       'at-arrow-default',
       'at-arrow-path',
       'at-arrow-selected',
       'at-arrow-backwards',
+      'at-arrow-open',
     ]);
   });
 
@@ -330,10 +363,13 @@ describe('selection', () => {
     for (const id of ['reality', 'phish', 'review', 'shipped']) expect(nodeEl(id)).toHaveClass('is-path');
     expect(nodeEl('other')).toHaveClass('is-dim');
     expect(nodeEl('ghost')).toHaveClass('is-dim');
+    expect(edgeEl('review:0')).toHaveClass('is-path');
+    expect(edgeEl('review:0')!.querySelector('path.tree-edge')!.getAttribute('marker-end')).toBe('url(#at-arrow-path)');
+    // an open path stays red while lit up or dimmed: it is a fact about the tree, not the selection
     expect(edgeEl('push:0')).toHaveClass('is-path');
-    expect(edgeEl('push:0')!.querySelector('path.tree-edge')!.getAttribute('marker-end')).toBe('url(#at-arrow-path)');
+    expect(edgeEl('push:0')!.querySelector('path.tree-edge')!.getAttribute('marker-end')).toBe('url(#at-arrow-open)');
     expect(edgeEl('other:0')).toHaveClass('is-dim');
-    expect(edgeEl('other:0')!.querySelector('path.tree-edge')!.getAttribute('marker-end')).toBe('url(#at-arrow-default)');
+    expect(edgeEl('other:0')!.querySelector('path.tree-edge')!.getAttribute('marker-end')).toBe('url(#at-arrow-open)');
   });
 
   it('highlights a selected edge and its two ends', async () => {
@@ -728,5 +764,167 @@ describe('viewport', () => {
     const { update } = await setup({ selection: { type: 'node', id: 'review' } });
     await update({ selection: { type: 'node', id: 'push' } });
     expect(rf.flow!.setCenter).not.toHaveBeenCalled();
+  });
+});
+
+describe('moving the ends of an arrow', () => {
+  /** what is under the pointer, since jsdom has no hit testing */
+  function pointAt(find: (x: number, y: number) => Element | null) {
+    // like a browser: the dragged dot is on top, the card (if any) below it
+    const all = (x: number, y: number) => [end('target') ?? document.body, find(x, y)].filter((e): e is Element => !!e);
+    Object.defineProperty(document, 'elementsFromPoint', { value: all, configurable: true });
+    onTestFinished(() => {
+      delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
+    });
+  }
+  const end = (which: 'source' | 'target') => document.querySelector(`.edge-end[data-end="${which}"]`) as SVGGElement;
+  const dot = (which: 'source' | 'target') => end(which).querySelector('.edge-end-dot')!;
+  /** drag an end and drop it on whatever pointAt says is under (x, y) */
+  async function drag(which: 'source' | 'target', x = 50, y = 60) {
+    fireEvent.pointerDown(end(which), { button: 0, clientX: 1, clientY: 1 });
+    fireEvent.pointerMove(window, { clientX: x, clientY: y });
+    await flush();
+    fireEvent.pointerUp(window, { clientX: x, clientY: y });
+    await flush();
+  }
+
+  it('shows both ends of the selected arrow, where its route meets the cards', async () => {
+    const { layout } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    const d = layout!.edges.get('shipped:0')!.path;
+    const n = d.match(/-?\d*\.?\d+/g)!.map(Number);
+    expect(dot('source').getAttribute('cx')).toBe(String(n[0]));
+    expect(dot('source').getAttribute('cy')).toBe(String(n[1]));
+    expect(dot('target').getAttribute('cx')).toBe(String(n.at(-2)));
+    expect(dot('target').getAttribute('cy')).toBe(String(n.at(-1)));
+    expect(end('source')).toHaveClass('nodrag', 'nopan');
+    expect(end('source').querySelector('title')).toHaveTextContent('Drag to change where this comes from');
+    expect(end('target').querySelector('title')).toHaveTextContent('Drag to change where this leads');
+    // the selected arrow is drawn above the cards so its ends can be grabbed
+    expect(props().elevateEdgesOnSelect).toBe(true);
+    expect(props().edgesReconnectable).toBe(false);
+  });
+
+  it('shows no ends for a route it cannot read', async () => {
+    const tree = parseTree(TEXT);
+    const layout = await layoutOf(tree);
+    layout.edges.set('shipped:0', { ...layout.edges.get('shipped:0')!, path: 'M0,0' });
+    await setup({ tree, layout, selection: { type: 'edge', id: 'shipped:0' } });
+    expect(edgeEl('shipped:0')).not.toBeNull();
+    expect(document.querySelector('.edge-end')).toBeNull();
+  });
+
+  it('shows no ends without a selected arrow, or when read-only', async () => {
+    const { update } = await setup();
+    expect(document.querySelector('.edge-end')).toBeNull();
+    await update({ selection: { type: 'node', id: 'push' } });
+    expect(document.querySelector('.edge-end')).toBeNull();
+    await update({ selection: { type: 'edge', id: 'shipped:0' }, readOnly: true });
+    expect(document.querySelector('.edge-end')).toBeNull();
+  });
+
+  it('drops the target end on another card: the connection now leads there', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('other'));
+    await drag('target');
+    expect(handlers.onReconnect).toHaveBeenCalledExactlyOnceWith('shipped:0', { source: 'push', target: 'other' });
+  });
+
+  it('drops the source end on another card: the connection now comes from there', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('reality'));
+    await drag('source');
+    expect(handlers.onReconnect).toHaveBeenCalledExactlyOnceWith('shipped:0', { source: 'reality', target: 'shipped' });
+  });
+
+  it('draws a preview while dragging and lights up a card that can take the end', async () => {
+    await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('other').querySelector('.tree-node'));
+    fireEvent.pointerDown(end('target'), { button: 0 });
+    await flush();
+    expect(end('target')).toHaveClass('is-dragging');
+    expect(document.querySelector('.reconnect-preview')).not.toBeNull();
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    await flush();
+    expect(nodeEl('other')).toHaveClass('is-reconnect-target');
+    // moving off it clears the highlight
+    pointAt(() => null);
+    fireEvent.pointerMove(window, { clientX: 900, clientY: 700 });
+    expect(nodeEl('other')).not.toHaveClass('is-reconnect-target');
+    fireEvent.pointerUp(window, { clientX: 900, clientY: 700 });
+    await flush();
+    expect(document.querySelector('.reconnect-preview')).toBeNull();
+  });
+
+  it('ignores drops that cannot be connections', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    // nothing leads into reality, an undeclared node cannot take a "from", a node cannot come from itself
+    for (const id of ['reality', 'ghost', 'push']) {
+      pointAt(() => nodeEl(id));
+      await drag('target');
+      expect(nodeEl(id)).not.toHaveClass('is-reconnect-target');
+    }
+    // dropping the end back where it was, or on empty canvas
+    pointAt(() => nodeEl('shipped'));
+    await drag('target');
+    pointAt(() => null);
+    await drag('target');
+    // the source cannot be the target itself
+    pointAt(() => nodeEl('shipped'));
+    await drag('source');
+    expect(handlers.onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('a card hidden under something else (the inspector) is not a drop target', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    const panel = document.createElement('aside');
+    document.body.append(panel);
+    onTestFinished(() => panel.remove());
+    Object.defineProperty(document, 'elementsFromPoint', { value: () => [end('target'), panel, nodeEl('other')], configurable: true });
+    onTestFinished(() => {
+      delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
+    });
+    await drag('target');
+    expect(nodeEl('other')).not.toHaveClass('is-reconnect-target');
+    expect(handlers.onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('only starts with the main button, and a cancelled pointer changes nothing', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('other'));
+    fireEvent.pointerDown(end('target'), { button: 2 });
+    await flush();
+    expect(document.querySelector('.reconnect-preview')).toBeNull();
+    fireEvent.pointerDown(end('target'), { button: 0 });
+    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
+    fireEvent.pointerCancel(window);
+    await flush();
+    expect(document.querySelector('.reconnect-preview')).toBeNull();
+    expect(nodeEl('other')).not.toHaveClass('is-reconnect-target');
+    fireEvent.pointerUp(window, { clientX: 5, clientY: 5 });
+    expect(handlers.onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('the click that ends a drop does not clear the selection', async () => {
+    const { handlers } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('other'));
+    fireEvent.pointerDown(end('target'), { button: 0 });
+    fireEvent.pointerUp(window, { clientX: 5, clientY: 5 });
+    fireEvent.click(document.querySelector('.react-flow__pane')!);
+    expect(handlers.onSelect).not.toHaveBeenCalledWith(null);
+    await flush();
+    // only that one click: the next one clears the selection as usual
+    fireEvent.click(document.querySelector('.react-flow__pane')!);
+    expect(handlers.onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  it('an arrow that goes away mid-drag leaves nothing behind', async () => {
+    const { handlers, update } = await setup({ selection: { type: 'edge', id: 'shipped:0' } });
+    pointAt(() => nodeEl('other'));
+    fireEvent.pointerDown(end('target'), { button: 0 });
+    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 });
+    await update({ selection: null });
+    expect(nodeEl('other')).not.toHaveClass('is-reconnect-target');
+    fireEvent.pointerUp(window, { clientX: 5, clientY: 5 });
+    expect(handlers.onReconnect).not.toHaveBeenCalled();
   });
 });

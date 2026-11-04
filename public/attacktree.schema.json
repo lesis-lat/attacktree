@@ -59,7 +59,7 @@
         { "$ref": "#/$defs/id" },
         {
           "type": "object",
-          "description": "The FIRST key is the source id; its value is an optional label such as '#yolosec'. Flags follow as sibling keys.",
+          "description": "The FIRST key is the source id; its value is an optional label drawn on the arrow. Flags follow as sibling keys.",
           "minProperties": 1,
           "properties": {
             "backwards": { "type": "boolean", "description": "A mitigation sends the attacker back to this earlier step." },

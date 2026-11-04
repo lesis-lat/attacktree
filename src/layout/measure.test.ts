@@ -18,6 +18,9 @@ function fakeContext(per = 10) {
     font: '',
     measureText(text: string) {
       fonts.push(this.font);
+      // monospace (the tag row): IBM Plex Mono advances 0.6em per character
+      const mono = this.font.match(/(\d+)px "IBM Plex Mono"/);
+      if (mono) return { width: text.length * 0.6 * Number(mono[1]) };
       return { width: text.length * per * (this.font.startsWith('600') ? 1.1 : 1) };
     },
   };
@@ -135,6 +138,28 @@ describe('with a 2D canvas', () => {
       for (const l of box.lines) expect(l.length * 10).toBeLessThanOrEqual(m.METRICS.maxText);
       expect(box.height).toBe(10 + 12 + 6 + 18 * box.lines.length + 12);
       expect(box.width).toBe(Math.ceil(Math.max(...box.lines.map((l) => l.length * 10)) + 2 + 28));
+    });
+
+    it('widens a card so its tag row fits a badge, letter-spacing included', () => {
+      // "NO DEFENSE": 10 characters at 5.4px plus 0.81px tracking each, 5px padding a side
+      expect(m.tagWidth('No defense')).toBeCloseTo(10 * 5.4 + 10 * 0.81);
+      const plain = m.measureNode(node('attack', 'x'));
+      const badged = m.measureNode(node('attack', 'x'), 'No defense');
+      // dot 6 + gap 5 + "ATTACK" + gap 8 + badge, plus 14px padding a side and 2px for the border
+      const row = 6 + 5 + m.tagWidth('Attack') + 8 + m.tagWidth('No defense') + 10;
+      expect(plain.width).toBe(128);
+      expect(badged.width).toBe(Math.ceil(row + 28 + 2));
+      expect(badged.height).toBe(plain.height);
+      // a long label is wider than the tag row anyway
+      const long = 'A label that is far wider than any tag row could be';
+      expect(m.measureNode(node('attack', long), 'No defense').width).toBe(m.measureNode(node('attack', long)).width);
+    });
+
+    it('writes "Undeclared" on the tag row of a ghost', () => {
+      const ghost = { ...node('fact', 'x'), declared: false };
+      expect(m.measureNode(ghost, 'Some long badge text here').width).toBe(
+        Math.ceil(6 + 5 + m.tagWidth('Undeclared') + 8 + m.tagWidth('Some long badge text here') + 10 + 30),
+      );
     });
 
     it('has a minimum width', () => {

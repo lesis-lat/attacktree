@@ -28,6 +28,20 @@ if (typeof window !== 'undefined') {
   }
   globalThis.DOMMatrixReadOnly ??= DOMMatrixReadOnlyStub as unknown as typeof DOMMatrixReadOnly;
 
+  // jsdom has no PointerEvent; without it, simulated pointer events lose button and coordinates.
+  if (typeof window.PointerEvent === 'undefined') {
+    class PointerEventStub extends MouseEvent {
+      pointerId: number;
+      pointerType: string;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 1;
+        this.pointerType = init.pointerType ?? 'mouse';
+      }
+    }
+    window.PointerEvent = PointerEventStub as unknown as typeof PointerEvent;
+  }
+
   // Theme detection.
   window.matchMedia ??= ((query: string) => ({
     matches: false,

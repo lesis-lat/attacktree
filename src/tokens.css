@@ -24,6 +24,7 @@
   --accent-ring: rgba(88, 71, 224, 0.35);
   --danger: #d33a4f;
   --danger-soft: rgba(211, 58, 79, 0.09);
+  --on-danger: #ffffff;
   --warning: #b7791f;
   --success: #1f9d6b;
 
@@ -99,6 +100,7 @@
   --accent-ring: rgba(141, 125, 255, 0.45);
   --danger: #ff6b7f;
   --danger-soft: rgba(255, 107, 127, 0.12);
+  --on-danger: #2a0a10;
   --warning: #f2b45a;
   --success: #3ccf91;
 

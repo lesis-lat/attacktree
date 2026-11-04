@@ -1,7 +1,8 @@
 import monoLatin from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2?url';
 import sansLatin from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?url';
 import type { Layout } from '../layout/layout';
-import { FONT_FAMILY, METRICS, textWidth } from '../layout/measure';
+import { FONT_FAMILY, METRICS, tagWidth, textWidth } from '../layout/measure';
+import { badgeOf, defenseGaps } from '../model/analysis';
 import { pngTrailer, svgSourceComment } from '../model/embed';
 import { isGhost, KIND_LABEL, type Tree } from '../model/types';
 
@@ -104,7 +105,10 @@ export async function renderSvg(
     labelText: token('text-2'),
     tagText: token('edge-tag-text'),
     tagBg: token('edge-tag-bg'),
+    danger: token('danger'),
+    onDanger: token('on-danger'),
   };
+  const gaps = defenseGaps(tree);
   const kind = (k: string, part: string) => token(`${k}-${part}`);
 
   const out: string[] = [];
@@ -115,9 +119,11 @@ export async function renderSvg(
   out.push('<defs>');
   const arrow = `${idPrefix}-a`;
   const back = `${idPrefix}-b`;
+  const open = `${idPrefix}-o`;
   for (const [id, color] of [
     [arrow, c.edge],
     [back, c.backwards],
+    [open, c.danger],
   ]) {
     out.push(
       `<marker id="${id}" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0.5,1 L9.5,5 L0.5,9 Q2.5,5 0.5,1 z" fill="${color}"/></marker>`,
@@ -136,9 +142,12 @@ export async function renderSvg(
     const placed = layout.edges.get(edge.id);
     if (!placed) continue;
     const dash = edge.backwards ? ' stroke-dasharray="2 5" stroke-linecap="round"' : !edge.implemented ? ' stroke-dasharray="6 5"' : '';
-    const color = edge.backwards ? c.backwards : c.edge;
+    // same priority as the canvas: backwards, then open path, then plain
+    const isOpen = !edge.backwards && gaps.openEdges.has(edge.id);
+    const color = edge.backwards ? c.backwards : isOpen ? c.danger : c.edge;
+    const marker = edge.backwards ? back : isOpen ? open : arrow;
     out.push(
-      `<path d="${placed.path}" fill="none" stroke="${color}" stroke-width="${edge.backwards ? 2 : 1.5}"${dash} marker-end="url(#${edge.backwards ? back : arrow})"/>`,
+      `<path d="${placed.path}" fill="none" stroke="${color}" stroke-width="${edge.backwards || isOpen ? 2 : 1.5}"${dash} marker-end="url(#${marker})"/>`,
     );
   }
   for (const edge of tree.edges) {
@@ -182,6 +191,15 @@ export async function renderSvg(
     out.push(
       `<text x="${p.x + m.padX + 11}" y="${tagY}" dominant-baseline="central" font-family="${MONO}" font-size="9" font-weight="600" letter-spacing="0.09em" fill="${kind(k, 'tag')}">${esc((isGhost(node) ? 'Undeclared' : KIND_LABEL[node.kind]).toUpperCase())}</text>`,
     );
+    const badge = badgeOf(node.id, gaps);
+    if (badge) {
+      const w = tagWidth(badge.label) + m.badgePadX * 2;
+      const bx = p.x + p.width - m.padX - w;
+      out.push(`<rect x="${bx}" y="${tagY - m.tag / 2}" width="${w}" height="${m.tag}" rx="${m.tag / 2}" fill="${c.danger}"/>`);
+      out.push(
+        `<text x="${bx + w / 2}" y="${tagY}" text-anchor="middle" dominant-baseline="central" font-family="${MONO}" font-size="9" font-weight="600" letter-spacing="0.09em" fill="${c.onDanger}">${esc(badge.label.toUpperCase())}</text>`,
+      );
+    }
     const top = p.y + m.padTop + m.tag + m.gap;
     p.lines.forEach((line, i) => {
       out.push(

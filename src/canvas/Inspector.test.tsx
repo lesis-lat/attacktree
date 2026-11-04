@@ -41,6 +41,7 @@ function actions(overrides: Partial<InspectorActions> = {}): InspectorActions {
     deleteNode: vi.fn(),
     updateEdge: vi.fn(),
     deleteEdge: vi.fn(),
+    reconnect: vi.fn(),
     close: vi.fn(),
     ...overrides,
   };
@@ -290,9 +291,53 @@ describe('node panel', () => {
 });
 
 describe('edge panel', () => {
-  it('shows where the connection goes', () => {
+  it('shows where the connection goes, as From and To choices', () => {
     setup({ type: 'edge', id: 'shipped:0' });
     expect(screen.getByText('Connection')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'From' })).toHaveValue('push');
+    expect(screen.getByRole('combobox', { name: 'To' })).toHaveValue('shipped');
+    expect(screen.getByRole('textbox', { name: 'Label' })).toHaveValue('via CI');
+  });
+
+  it('offers every node as the start, and declared nodes other than reality as the end', () => {
+    setup({ type: 'edge', id: 'shipped:0' });
+    const options = (name: string) => [...screen.getByRole('combobox', { name }).querySelectorAll('option')].map((o) => [o.value, o.textContent]);
+    // not the end itself; an undeclared id is named as such
+    expect(options('From')).toEqual([
+      ['reality', 'Reality'],
+      ['phish', 'Phish an engineer'],
+      ['push', 'Push a backdoor'],
+      ['review', 'Code review'],
+      ['ghost', 'Undeclared: ghost'],
+    ]);
+    // not reality, not undeclared ids, not the start itself
+    expect(options('To')).toEqual([
+      ['phish', 'Phish an engineer'],
+      ['review', 'Code review'],
+      ['shipped', 'Backdoor ships'],
+    ]);
+  });
+
+  it('names two nodes with the same label by their ids too', () => {
+    const tree = parseTree(TEXT.replace('- review: Code review', '- review: Phish an engineer'));
+    setup({ type: 'edge', id: 'shipped:0' }, { tree });
+    const texts = [...screen.getByRole('combobox', { name: 'From' }).querySelectorAll('option')].map((o) => o.textContent);
+    expect(texts).toContain('Phish an engineer (phish)');
+    expect(texts).toContain('Phish an engineer (review)');
+  });
+
+  it('moves either end of the connection', () => {
+    const { acts, tree } = setup({ type: 'edge', id: 'shipped:0' });
+    const edge = tree.edges.find((e) => e.id === 'shipped:0')!;
+    fireEvent.change(screen.getByRole('combobox', { name: 'From' }), { target: { value: 'phish' } });
+    expect(acts.reconnect).toHaveBeenLastCalledWith(edge, { source: 'phish', target: 'shipped' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'review' } });
+    expect(acts.reconnect).toHaveBeenLastCalledWith(edge, { source: 'push', target: 'review' });
+  });
+
+  it('read-only: shows the route as text', () => {
+    setup({ type: 'edge', id: 'shipped:0' }, { readOnly: true });
+    expect(screen.queryByRole('combobox')).toBeNull();
     const route = document.querySelector('.edge-route')!;
     expect(route).toHaveTextContent('Push a backdoor');
     expect(route).toHaveTextContent('Backdoor ships');
@@ -302,7 +347,7 @@ describe('edge panel', () => {
   it('falls back to the id for an end it cannot find', () => {
     const tree = parseTree(TEXT);
     tree.nodes = tree.nodes.filter((n) => n.id !== 'push');
-    setup({ type: 'edge', id: 'shipped:0' }, { tree });
+    setup({ type: 'edge', id: 'shipped:0' }, { tree, readOnly: true });
     expect(document.querySelector('.edge-route')).toHaveTextContent('push');
   });
 
@@ -314,7 +359,7 @@ describe('edge panel', () => {
     expect(acts.updateEdge).toHaveBeenLastCalledWith(edge, { label: 'via CI!' });
     await user.clear(box);
     expect(acts.updateEdge).toHaveBeenLastCalledWith(edge, { label: '' });
-    expect(box).toHaveAttribute('placeholder', 'e.g. #yolosec');
+    expect(box).toHaveAttribute('placeholder', 'e.g. via a phishing kit');
   });
 
   it('follows the label when the edge changes', () => {
@@ -325,16 +370,19 @@ describe('edge panel', () => {
     expect(screen.getByRole('textbox', { name: 'Label' })).toHaveValue('#yolosec');
   });
 
-  it('toggles #yolosec', async () => {
-    const { user, acts, tree, rerender } = setup({ type: 'edge', id: 'push:0' });
-    const toggle = () => screen.getByRole('button', { name: /#yolosec/ });
-    expect(toggle()).toHaveClass('is-on');
-    await user.click(toggle());
-    expect(acts.updateEdge).toHaveBeenLastCalledWith(tree.edges.find((e) => e.id === 'push:0'), { label: '' });
-    rerender({ type: 'edge', id: 'shipped:0' });
-    expect(toggle()).not.toHaveClass('is-on');
-    await user.click(toggle());
-    expect(acts.updateEdge).toHaveBeenLastCalledWith(tree.edges.find((e) => e.id === 'shipped:0'), { label: '#yolosec' });
+  it('has no #yolosec switch: the app finds undefended steps by itself', () => {
+    setup({ type: 'edge', id: 'push:0' });
+    expect(screen.queryByRole('button', { name: /#yolosec/ })).toBeNull();
+    // a '#yolosec' label from a Deciduous file is still an ordinary, editable label
+    expect(screen.getByRole('textbox', { name: 'Label' })).toHaveValue('#yolosec');
+  });
+
+  it('says when a connection is on an open path', () => {
+    const { rerender } = setup({ type: 'edge', id: 'shipped:0' });
+    expect(screen.getByRole('note')).toHaveTextContent('Open path. This step is on a way to a goal that meets no defense.');
+    // backwards connections are never steps of a path
+    rerender({ type: 'edge', id: 'phish:1' });
+    expect(screen.queryByRole('note')).toBeNull();
   });
 
   it('toggles backwards', async () => {
@@ -375,5 +423,48 @@ describe('edge panel', () => {
     expect(screen.queryByRole('button', { name: /#yolosec|Backwards|Not implemented|Delete/ })).toBeNull();
     await user.type(screen.getByRole('textbox', { name: 'Label' }), 'x');
     expect(acts.updateEdge).not.toHaveBeenCalled();
+  });
+});
+
+describe('defense gaps in the node panel', () => {
+  it('explains an attack with no defense, and how to fix it', () => {
+    setup({ type: 'node', id: 'phish' });
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent('No defense. Nothing counters this attack yet: no mitigation in place comes from it.');
+    expect(note).toHaveTextContent('Add a mitigation after it, or connect one that exists.');
+  });
+
+  it('a planned mitigation is not a defense yet', () => {
+    // "review" counters "push" but is not implemented
+    setup({ type: 'node', id: 'push' });
+    expect(screen.getByRole('note')).toHaveTextContent('No defense.');
+  });
+
+  it('read-only: explains, without suggesting an edit', () => {
+    setup({ type: 'node', id: 'phish' }, { readOnly: true });
+    expect(screen.getByRole('note')).toHaveTextContent('No defense.');
+    expect(screen.getByRole('note')).not.toHaveTextContent('Add a mitigation');
+  });
+
+  it('explains a goal the attacker can reach without beating any defense', () => {
+    setup({ type: 'node', id: 'shipped' });
+    expect(screen.getByRole('note')).toHaveTextContent('Open path. The attacker can reach this goal without beating any defense. The red arrows show how.');
+  });
+
+  it('says nothing for a defended attack, a mitigation or reality', () => {
+    const tree = parseTree(TEXT.replace('  - push:\n    implemented: false\n', '  - push\n'));
+    const { rerender } = setup({ type: 'node', id: 'push' }, { tree });
+    expect(screen.queryByRole('note')).toBeNull();
+    rerender({ type: 'node', id: 'review' });
+    expect(screen.queryByRole('note')).toBeNull();
+    rerender({ type: 'node', id: 'reality' });
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('follows the tree as it changes', () => {
+    const { rerender } = setup({ type: 'node', id: 'push' });
+    expect(screen.getByRole('note')).toBeInTheDocument();
+    rerender({ type: 'node', id: 'push' }, parseTree(TEXT.replace('  - push:\n    implemented: false\n', '  - push\n')));
+    expect(screen.queryByRole('note')).toBeNull();
   });
 });

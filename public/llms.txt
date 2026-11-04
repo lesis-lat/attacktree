@@ -21,7 +21,7 @@ facts:                      # true statements about the system
 attacks:                    # attacker actions
 - stuffing: Credential stuffing on /login
   from:
-  - public_api: '#yolosec'  # edge label; '#yolosec' = nothing stops this step
+  - public_api: via a botnet  # optional edge label
 mitigations:                # defenses that counter an attack
 - rate_limit: Rate limiting and breached-password checks
   from:
@@ -38,6 +38,7 @@ goals:                      # what the attacker ultimately wants
 - An edge entry is an id, or a map whose first key is the id, followed by flags at the same indentation: `backwards: true` (a mitigation sends the attacker back to an earlier step) and `implemented: false` (planned).
 - `filter: [ids]` shows only the paths through those nodes. `positions: {id: [x, y]}` stores nodes placed by hand.
 - Model in a rhythm: an attack, the mitigation that counters it, then the attacker's next move because of that mitigation.
+- Gaps are found automatically: an attack with no implemented mitigation is marked "No defense", and a goal reachable without beating any defense is an "Open path" (drawn in red). No `#yolosec` labels are needed.
 
 ## Optional
 

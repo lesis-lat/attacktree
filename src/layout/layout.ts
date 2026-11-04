@@ -1,5 +1,6 @@
 import ELK, { type ElkExtendedEdge, type ElkNode, type ElkPoint } from 'elkjs/lib/elk-api.js';
 import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
+import { badgeOf, defenseGaps } from '../model/analysis';
 import type { Tree } from '../model/types';
 import { type Box, measureEdgeLabel, measureNode } from './measure';
 
@@ -63,7 +64,9 @@ const LAYOUT_OPTIONS: Record<string, string> = {
 export function layoutKey(tree: Tree, visible: Set<string> | null): string {
   const shown = tree.nodes.filter((n) => !visible || visible.has(n.id));
   const ids = new Set(shown.map((n) => n.id));
-  const nodes = shown.map((n) => [n.id, n.kind, n.label]);
+  // the tag row ("Undeclared", a "No defense" badge) sets a minimum width
+  const gaps = defenseGaps(tree);
+  const nodes = shown.map((n) => [n.id, n.kind, n.label, n.declared, badgeOf(n.id, gaps)?.label ?? null]);
   // edges with a hidden end are not laid out
   const edges = tree.edges
     .filter((e) => ids.has(e.source) && ids.has(e.target))
@@ -122,7 +125,8 @@ export async function computeLayout(tree: Tree, visible: Set<string> | null): Pr
   const hasOut = new Set(routed.map((r) => r.from));
   const hasIn = new Set(routed.map((r) => r.to));
 
-  const boxes = new Map(shown.map((n) => [n.id, measureNode(n)]));
+  const gaps = defenseGaps(tree);
+  const boxes = new Map(shown.map((n) => [n.id, measureNode(n, badgeOf(n.id, gaps)?.label ?? null)]));
   const labels = new Map(edges.filter((e) => e.label).map((e) => [e.id, measureEdgeLabel(e.label!)]));
 
   const graph: ElkNode = {
