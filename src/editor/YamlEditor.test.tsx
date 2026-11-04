@@ -594,7 +594,7 @@ describe('YamlEditor: autocomplete', () => {
     ['a list item after its parent node ended', 'attacks:\n- a: A\n  from:\n  - reality\n- b: B\n  - |\n'],
     ['a list under a key that only starts with from', 'fromage:\n- |\n'],
   ])('suggests nothing on %s', async (_name, marked) => {
-    const doc = marked.replace('|', '');
+    const doc = marked.replace(/\|/g, '');
     const { view } = setup({ value: doc, tree: parseTree(doc) });
     const options = await completionsAt(view(), marked.indexOf('|'));
     expect(options).toEqual([]);
